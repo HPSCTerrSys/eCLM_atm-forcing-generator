@@ -48,6 +48,9 @@ def generate_datarequest(year, monthstr, days,
                         target=None):
     """Generate and execute ERA5 data download request.
 
+    "ERA5 hourly data on single levels from 1940 to present":
+    https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview
+
     Args:
         year (int): Year to download
         monthstr (str): Month as zero-padded string (e.g., '07')
@@ -71,7 +74,11 @@ def generate_datarequest(year, monthstr, days,
                 "surface_pressure",
                 "mean_surface_downward_long_wave_radiation_flux",
                 "mean_surface_downward_short_wave_radiation_flux",
-                "mean_total_precipitation_rate"
+                "mean_total_precipitation_rate",
+                "10m_u_component_of_wind",
+                "10m_v_component_of_wind",
+                "2m_temperature",
+                "total_column_water_vapour",
             ],
             "year": [str(year)],
             "month": [monthstr],
