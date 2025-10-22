@@ -107,6 +107,9 @@ def generate_datarequest(year, monthstr, days,
 
     return target
 
+
+if __name__ == "__main__":
+
     # Get the year and month from command-line arguments
     year = int(sys.argv[1])
     month = int(sys.argv[2])
@@ -124,9 +127,10 @@ def generate_datarequest(year, monthstr, days,
 
     # Get the list of days for the request
     days = generate_days(year, month)
+
     print(f"Downloading ERA5 data for {year}-{monthstr}")
-    print(f"Output directory: {os.path.abspath(dirout)}")
+    print(f"Output directory: {os.getcwd()}")
 
     # Execute download request
     target = generate_datarequest(year, monthstr, days)
-    print(f"Download complete: {target}")
+    print(f"Download complete: {os.path.abspath(target)}")
