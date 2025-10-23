@@ -1,0 +1,17 @@
+# https://hpscterrsys.github.io/eCLM_atm-forcing-generator
+
+format: jb-book
+root: INDEX
+parts:
+
+- caption: User's Guide
+  chapters:
+  - file: users_guide/README
+    title: Create atmospheric forcing files
+
+- caption: Reference
+  chapters:
+  - url: https://github.com/HPSCTerrSys/eCLM
+    title: eCLM
+  - url: https://github.com/HPSCTerrSys/eCLM_static-file-generator/blob/main/README.md)
+    title: eCLM static file generator
