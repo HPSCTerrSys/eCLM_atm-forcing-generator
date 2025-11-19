@@ -2,6 +2,6 @@
 
 This repository shows how to generate atmospheric forcings for eCLM simulations.
 
-An overview of the needed atmospheric forcing variables for eCLM can be found [here](overview.md#overview-atmospheric-forcing-files).
+For an overview of the needed atmospheric forcing variables for eCLM see [Overview atmospheric forcing files](overview).
 
-The default is the creation of atmospheric forcing based on ERA5 data [here](era5-forcing.md#eclm-atmospheric-forcing-based-on-era5).
+For the default creation of atmospheric forcing based on ERA5 data see [eCLM atmospheric forcing based on ERA5](era5forcing).
