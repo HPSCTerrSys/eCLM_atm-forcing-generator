@@ -6,8 +6,9 @@ There exist a few global standard forcing data sets that can be downloaded toget
 - <a href="https://escomp.github.io/ctsm-docs/versions/release-clm5.0/html/users_guide/setting-up-and-running-a-case/customizing-the-datm-namelist.html#clmcruncepv7-mode-and-it-s-datm-settings" target="_blank">CRUNCEP dataset</a> 
 - <a href="https://escomp.github.io/ctsm-docs/versions/release-clm5.0/html/users_guide/setting-up-and-running-a-case/customizing-the-datm-namelist.html#clm-qian-mode-and-it-s-datm-settings" target="_blank">Qian dataset</a>
 
-> [!CAUTION]
-> The following part of the documentation is outdated!
+```{warning}
+The following part of the documentation is outdated!
+```
 
 For JSC users, an example python script to create forcings for a single-point case based on hourly observations can be found under `/p/scratch/cslts/shared_data/rlmod_eCLM`.
 
