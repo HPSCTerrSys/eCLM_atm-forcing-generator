@@ -8,10 +8,16 @@ parts:
   chapters:
   - file: users_guide/README
     title: Create atmospheric forcing files
+  - file: users_guide/overview
+    title: Overview atmospheric forcing
+  - file: users_guide/era5-forcing
+    title: ERA5 atmospheric forcing
+  - file: users_guide/other-forcing
+    title: Other atmospheric forcing
 
 - caption: Reference
   chapters:
   - url: https://github.com/HPSCTerrSys/eCLM
     title: eCLM
-  - url: https://github.com/HPSCTerrSys/eCLM_static-file-generator/blob/main/README.md)
+  - url: https://github.com/HPSCTerrSys/eCLM_static-file-generator/blob/main/README.md
     title: eCLM static file generator
