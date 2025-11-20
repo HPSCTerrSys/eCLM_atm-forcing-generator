@@ -11,6 +11,7 @@ Created on Tue Feb 28 14:17:32 2023
 # correlation of the variables
 #
 # Refer to eCLM Documentation for more information.
+# https://hpscterrsys.github.io/eCLM/users_guide/introduction/perturbation.html#noise-based-forcing-perturbation
 #
 # Four variables are disturbed:
 # - Surface precipitation, log-normal multiplicative
