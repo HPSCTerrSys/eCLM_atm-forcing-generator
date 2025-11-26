@@ -1,11 +1,5 @@
-# eCLM atmospheric forcing generator
-
-[![docs](https://github.com/HPSCTerrSys/eCLM_atm-forcing-generator/actions/workflows/doc.yml/badge.svg)](https://github.com/HPSCTerrSys/eCLM_atm-forcing-generator/actions/workflows/doc.yml)
-
-## Introduction
-
-This repository shows how to generate atmospheric forcings for eCLM
-simulations.
+(era5forcing)=
+# eCLM atmospheric forcing based on ERA5
 
 Basis: Mainly CDO commands.
 
@@ -82,15 +76,8 @@ cdo gendis,<eclm_domainfile.nc> <era5meteo_yyyy_mm.nc> <wgtdis_era5meteo_to_doma
 cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
 ```
 
-- `<era5caf_yyyy_mm.nc>`: `caf` stands for "CdsApi Format" and `<era5caf_yyyy_mm.nc>` can be on of the netCDF-files downloaded from the cdsapi.
-- `<wgtdis_era5caf_to_domain.nc>` can be chosen, illustrative example:
-  `wgtdis_era5caf_to_eur11u-189976.nc`
-
 Usage: `sh prepare_ERA5_input.sh iyear=<year> imonth=<month>
 wgtcaf=<wgtcaf> wgtmeteo=<wgtmeteo> griddesfile=<griddesfile>` More
 options are available, see script for details.
 
-Please check the documentation at https://hpscterrsys.github.io/eCLM_atm-forcing-generator/INDEX.html
 
-## License
-eCLM atmospheric forcing generator is open source software and is licensed under the [MIT-License](https://github.com/HPSCTerrSys/eCLM_atm-forcing-generator/blob/master/LICENSE).
