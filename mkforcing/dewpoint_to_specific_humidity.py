@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import netCDF4
 
@@ -143,8 +144,18 @@ def add_specific_humidity_to_netcdf(filename):
 
 
 if __name__ == "__main__":
-    # Specify your netCDF file
-    filename = "cdsapidwn2/data_stream-oper_stepType-instant.nc"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Add specific humidity (q2m) to a netCDF file based on dewpoint temperature and surface pressure."
+    )
+    parser.add_argument(
+        "filename",
+        type=str,
+        help="Path to the ERA5-downloaded netCDF file containing 'sp' and 'd2m' variables"
+    )
+
+    # Parse command-line arguments
+    args = parser.parse_args()
 
     # Process the file
-    add_specific_humidity_to_netcdf(filename)
+    add_specific_humidity_to_netcdf(args.filename)
