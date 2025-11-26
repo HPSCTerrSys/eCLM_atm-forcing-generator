@@ -6,6 +6,7 @@ lrmp=true
 lmerge=true
 lclm3=false
 lmeteo=true			# Switch for using JSC-internal meteocloud data
+lunzip=true			# Switch for unzipping or (if false) copying the ERA5 data
 ompthd=1
 # TSMP2/eclm
 pathdata=./
@@ -37,6 +38,7 @@ parse_arguments() {
             lmerge) lmerge="$value" ;;
             lclm3) lclm3="$value" ;;
             lmeteo) lmeteo="$value" ;;
+            lunzip) lunzip="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
@@ -76,7 +78,13 @@ do
   mkdir -pv $tmpdir
 
   if $lrmp; then
-    unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+    if $lunzip; then
+      # Unzip ERA5-downloaded data from zip file
+      unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+    else
+      # Copy already unzipped data
+      cp ${pathdata}/data_stream-oper_stepType-instant.nc ${pathdata}/data_stream-oper_stepType-avg.nc ${tmpdir}
+    fi
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/rmp_era5_${year}_${month}_ins.nc
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-avg.nc ${tmpdir}/rmp_era5_${year}_${month}_avg.nc
     if $lmeteo; then
