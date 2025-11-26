@@ -13,6 +13,7 @@ Requirements:
 Usage:
     python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>
     python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
     python download_ERA5_input.py --help
 
 Note:
@@ -133,12 +134,38 @@ if __name__ == "__main__":
         required=True,
         help="Output directory path"
     )
+    parser.add_argument(
+        "--request",
+        type=str,
+        required=False,
+        help="Path to Python file defining custom 'request' variable"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=False,
+        default="reanalysis-era5-single-levels",
+        help="CDS dataset name (default: reanalysis-era5-single-levels)"
+    )
 
     # Parse command-line arguments
     args = parser.parse_args()
     year = args.year
     month = args.month
     dirout = args.dirout
+
+    # Load custom request if provided
+    custom_request = None
+    if args.request:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
+        custom_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(custom_module)
+        if hasattr(custom_module, 'request'):
+            custom_request = custom_module.request
+            print(f"Loaded custom request from: {args.request}")
+        else:
+            print(f"Warning: No 'request' variable found in {args.request}, using default")
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
@@ -154,8 +181,9 @@ if __name__ == "__main__":
     days = generate_days(year, month)
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
+    print(f"Dataset: {args.dataset}")
     print(f"Output directory: {os.getcwd()}")
 
     # Execute download request
-    target = generate_datarequest(year, monthstr, days)
+    target = generate_datarequest(year, monthstr, days, dataset=args.dataset, request=custom_request)
     print(f"Download complete: {os.path.abspath(target)}")
