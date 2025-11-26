@@ -157,6 +157,7 @@ if __name__ == "__main__":
 
     # Load custom request if provided
     custom_request = None
+    custom_dataset = args.dataset
     if args.request:
         import importlib.util
         spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
@@ -167,6 +168,9 @@ if __name__ == "__main__":
             print(f"Loaded custom request from: {args.request}")
         else:
             print(f"Warning: No 'request' variable found in {args.request}, using default")
+        if hasattr(custom_module, 'dataset'):
+            custom_dataset = custom_module.dataset
+            print(f"Loaded custom dataset from: {args.request}")
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
@@ -182,9 +186,9 @@ if __name__ == "__main__":
     days = generate_days(year, month)
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
-    print(f"Dataset: {args.dataset}")
+    print(f"Dataset: {custom_dataset}")
     print(f"Output directory: {os.getcwd()}")
 
     # Execute download request
-    target = generate_datarequest(year, monthstr, days, dataset=args.dataset, request=custom_request)
+    target = generate_datarequest(year, monthstr, days, dataset=custom_dataset, request=custom_request)
     print(f"Download complete: {os.path.abspath(target)}")
