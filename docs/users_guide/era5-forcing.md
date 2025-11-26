@@ -54,7 +54,17 @@ Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Remapping, Data merging, CLM3.5
+### Preparation of ERA5 data II: Specific humidity computation
+
+For users, who do not have access to the Meteocloud from the previous
+section.
+
+For ERA5, specific humidity can be computed from dewpoint temperature
+and surface pressure using `python dewpoint_to_specific_humidity.py`
+after adapting `filename`.
+
+
+### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
 `prepare_ERA5_input.sh` prepares ERA5 as an input by remapping the
 ERA5 data, changing names and modifying units.
 
