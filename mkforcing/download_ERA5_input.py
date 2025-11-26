@@ -99,6 +99,11 @@ def generate_datarequest(year, monthstr, days,
             "download_format": "unarchived",
             "area": [74, -42, 20, 69]
         }
+    else:
+        # Adapt year, month and day to input values
+        request["year"] = [str(year)]
+        request["month"] = [monthstr]
+        request["day"] = days
 
     # Default filename if not provided
     if target is None:
