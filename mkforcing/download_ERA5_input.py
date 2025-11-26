@@ -95,7 +95,7 @@ def generate_datarequest(year, monthstr, days,
             ],
             "data_format": "netcdf",
             "download_format": "unarchived",
-            "area": [74, -42, 20, 69]
+            "area": [74, -42, 20, 69]  # N, W, S, E
         }
     else:
         # Adapt year, month and day to input values

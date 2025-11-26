@@ -28,7 +28,8 @@ request = {
     ],
     "data_format": "netcdf",
     "download_format": "unarchived",
-    "area": [74, -42, 20, 69]
+    "area": [51, 6, 50, 7]      # Selhausen
+    # "area": [74, -42, 20, 69] # Europe
 }
 
 # client = cdsapi.Client()
