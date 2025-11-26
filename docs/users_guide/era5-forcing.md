@@ -63,7 +63,7 @@ For ERA5, specific humidity can be computed from dewpoint temperature
 and surface pressure using 
 
 ```
-python dewpoint_to_specific_humidity.py --filename <era5_filename>
+python dewpoint_to_specific_humidity.py <era5_filename>
 ```
 
 ### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
