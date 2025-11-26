@@ -83,7 +83,7 @@ do
   if $lmerge; then
 
     # cdo -P ${ompthd} expr,'WIND=sqrt(u^2+v^2)' ${tmpdir}/rmp_meteocloud_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp.nc
-    cdo -P ${ompthd} expr,'WIND=sqrt(u10^2+v10^2)' ${tmpdir}/rmp_era5_${year}_${month}_ins.nc ${tmpdir}/${year}_${month}_temp.nc # Calculate WIND from u10 and v10, and rename t2m to TBOT
+    cdo -P ${ompthd} expr,'WIND=sqrt(u10^2+v10^2)' ${tmpdir}/rmp_era5_${year}_${month}_ins.nc ${tmpdir}/${year}_${month}_temp.nc # Calculate WIND from u10 and v10
     cdo -f nc4c const,10,${tmpdir}/rmp_era5_${year}_${month}_avg.nc ${tmpdir}/${year}_${month}_const.nc
     ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}_avg.nc ${tmpdir}/${year}_${month}_temp2.nc
     ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}_ins.nc ${tmpdir}/${year}_${month}_temp7.nc
