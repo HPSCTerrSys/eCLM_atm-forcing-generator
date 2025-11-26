@@ -26,7 +26,7 @@ More information about the installation and access can be found [here](https://c
 
 Usage:
 Either directly:
-`python download_ERA5_input.py <year> <month> <output_directory>`
+`python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>`
 Or using the wrapper script:
 `./download_ERA5_input_wrapper.sh`
 after changing dates and output directory in the `Settings` section inside this wrapper script.

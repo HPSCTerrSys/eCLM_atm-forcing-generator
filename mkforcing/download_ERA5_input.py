@@ -11,14 +11,15 @@ Requirements:
     - CDS API credentials configured in ~/.cdsapirc
 
 Usage:
-    python download_ERA5_input.py <year> <month> <output_directory>
-    python download_ERA5_input.py 2017 7 ./output
+    python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
     python download_ERA5_input.py --help
 
 Note:
     CDS API credentials must be configured before use.
     See: https://cds.climate.copernicus.eu/api-how-to
 """
+import argparse
 import calendar
 import cdsapi
 import sys
@@ -110,10 +111,34 @@ def generate_datarequest(year, monthstr, days,
 
 if __name__ == "__main__":
 
-    # Get the year and month from command-line arguments
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    dirout = sys.argv[3]
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Download ERA5 reanalysis data from Copernicus Climate Data Store (CDS)."
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        required=True,
+        help="Year to download (e.g., 2017)"
+    )
+    parser.add_argument(
+        "--month",
+        type=int,
+        required=True,
+        help="Month to download (1-12)"
+    )
+    parser.add_argument(
+        "--dirout",
+        type=str,
+        required=True,
+        help="Output directory path"
+    )
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+    year = args.year
+    month = args.month
+    dirout = args.dirout
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
