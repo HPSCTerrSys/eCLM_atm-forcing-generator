@@ -23,8 +23,9 @@ Note:
 import argparse
 import calendar
 import cdsapi
-import sys
+# import sys
 import os
+
 
 def generate_days(year, month):
     """Get the number of days in a given month and year.
@@ -44,10 +45,11 @@ def generate_days(year, month):
 
     return days
 
+
 def generate_datarequest(year, monthstr, days,
-                        dataset="reanalysis-era5-single-levels",
-                        request=None,
-                        target=None):
+                         dataset="reanalysis-era5-single-levels",
+                         request=None,
+                         target=None):
     """Generate and execute ERA5 data download request.
 
     "ERA5 hourly data on single levels from 1940 to present":
