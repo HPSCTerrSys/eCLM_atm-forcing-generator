@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Before using this script CDSAPI has to be configured (see README)
 # Needs to be executed at LOGIN node as connection to "outside" is required
 set -eo pipefail
