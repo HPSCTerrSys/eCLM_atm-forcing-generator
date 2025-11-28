@@ -33,7 +33,7 @@ mkdir -p $out_dir
 
 # loop over months
 current_date=$start_date
-while [[ "$current_date" < "$end_date" ]]; do
+while [ "$current_date" \< "$end_date" ]; do
     echo "Processing month: $current_date"
 
     year="${current_date%%-*}"
