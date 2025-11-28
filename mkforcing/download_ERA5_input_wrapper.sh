@@ -45,6 +45,9 @@ while [[ "$current_date" < "$end_date" ]]; do
     # start download script with data request
     ./download_ERA5_input.py $year $month $out_dir
 
-    # Increment the month
-    current_date=$(date -I -d "$current_date-01 + 1 month" | cut -d'-' -f1,2)
+    # Increment the month, arbitrarily setting unimportant day of month to 1
+    # POSIX.1-2024 prescribes that months start at zero and years are since 1900
+    current_date=$(perl -MPOSIX -e "print strftime( '%Y-%m', 0, 0, 0, 1,
+                                    (split(/-/, '$current_date'))[1],
+                                    (split(/-/, '$current_date'))[0]-1900);")
 done
