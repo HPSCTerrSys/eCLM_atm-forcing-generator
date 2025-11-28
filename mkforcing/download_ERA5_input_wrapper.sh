@@ -3,9 +3,6 @@
 # Needs to be executed at LOGIN node as connection to "outside" is required
 set -eo pipefail
 
-# load environment
-module load Python
-
 # Settings
 start_date="2017-07" # yyyy-mm
 end_date="2018-08"   # yyyy-mm + 1
