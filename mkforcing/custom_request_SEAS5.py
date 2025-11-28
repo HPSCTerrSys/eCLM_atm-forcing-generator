@@ -10,10 +10,10 @@ request = {
     "originating_centre": "ecmwf",
     "system": "51",
     "variable": [
-        "mean_sea_level_pressure",
-        "surface_thermal_radiation_downwards",
+        "mean_sea_level_pressure",  # convert to surface pressure, use elevation (barometric formula, ICAO standard), sufrace geopotential height, (`geopotential` from pressure level data)
+        "surface_thermal_radiation_downwards",  # maybe needs unit conversion J/m2 to W/m2
         "surface_solar_radiation_downwards",
-        "total_precipitation"
+        "total_precipitation",
         "10m_u_component_of_wind",
         "10m_v_component_of_wind",
         "2m_temperature",
