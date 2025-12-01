@@ -125,7 +125,7 @@ do
     if $lmeteo; then
       ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t,TBOT -v q,QBOT ${year}-${month}.nc
     else
-      ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t2m,TBOT -v q2m,QBOT ${year}-${month}.nc
+      ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${year}-${month}.nc
     fi
 #    ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${year}_${month}.nc
     ncatted -O -a units,ZBOT,m,c,"m" ${year}-${month}.nc
