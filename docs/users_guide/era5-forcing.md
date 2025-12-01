@@ -60,7 +60,7 @@ For users, who do not have access to the Meteocloud from the previous
 section.
 
 For ERA5, specific humidity can be computed from dewpoint temperature
-and surface pressure using 
+and surface pressure using
 
 ```
 python dewpoint_to_specific_humidity.py <era5_filename>
