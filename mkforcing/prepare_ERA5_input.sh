@@ -5,9 +5,14 @@ set -eo pipefail
 lrmp=true
 lmerge=true
 lclm3=false
+lmeteo=true			# Switch for using JSC-internal meteocloud data
+lunzip=true			# Switch for unzipping or (if false) copying the ERA5 data
+lwgtdis=false			# Switch for creating wgtdis file in script
+lgriddes=false			# Switch for creating griddes file in script
 ompthd=1
 # TSMP2/eclm
 pathdata=./
+domainfile=../domain.lnd.DE-RuS_DE-RuS.250926.nc
 wgtcaf=/p/scratch/cslts/poll1/sim/euro-cordex/tsmp2_wfe_eur-11u/dta/rmp_gridwgts/wgtdis_era5caf_to_eur11u-189976.nc
 wgtmeteo=/p/scratch/cslts/poll1/sim/euro-cordex/tsmp2_wfe_eur-11u/dta/rmp_gridwgts/wgtdis_era5meteo_to_eur11u-189976.nc
 griddesfile=/p/scratch/cslts/poll1/sim/euro-cordex/tsmp2_wfe_eur-11u/dta/rmp_gridwgts/griddes_eur-11u_189976.txt
@@ -35,6 +40,8 @@ parse_arguments() {
             lrmp) lrmp="$value" ;;
             lmerge) lmerge="$value" ;;
             lclm3) lclm3="$value" ;;
+            lmeteo) lmeteo="$value" ;;
+            lunzip) lunzip="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
@@ -74,7 +81,27 @@ do
   mkdir -pv $tmpdir
 
   if $lrmp; then
-    unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+    if $lunzip; then
+      # Unzip ERA5-downloaded data from zip file
+      unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+    else
+      # Copy already unzipped data
+      cp ${pathdata}/data_stream-oper_stepType-instant.nc ${pathdata}/data_stream-oper_stepType-avg.nc ${tmpdir}
+    fi
+
+    if $lwgtdis; then
+      cdo gendis,${domainfile} ${tmpdir}/data_stream-oper_stepType-instant.nc ${wgtcaf}
+      if $lmeteo; then
+	cdo gendis,${domainfile} ${pathdata}/meteocloud_${year}_${month}.nc ${wgtmeteo}
+      fi
+
+    fi
+
+    if $lgriddes; then
+      cdo griddes ${domainfile} > ${griddesfile}
+    fi
+
+
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/rmp_era5_${year}_${month}_ins.nc
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-avg.nc ${tmpdir}/rmp_era5_${year}_${month}_avg.nc
     cdo -P ${ompthd} remap,${griddesfile},${wgtmeteo} ${pathdata}/meteocloud_${year}_${month}.nc ${tmpdir}/rmp_meteocloud_${year}_${month}.nc
