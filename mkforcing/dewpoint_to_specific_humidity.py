@@ -12,6 +12,7 @@ def dewpoint_to_specific_humidity(T_d, P):
     - Stull, R., 2017: "Practical Meteorology: An Algebra-based Survey of Atmospheric
       Science" -version 1.02b.  Univ. of British Columbia.  940 pages.
       isbn 978-0-88865-283-6 .
+    - https://www.eoas.ubc.ca/books/Practical_Meteorology/
 
     Parameters:
     -----------
