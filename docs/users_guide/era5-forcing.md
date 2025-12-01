@@ -54,7 +54,7 @@ Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Specific humidity computation
+### Preparation of ERA5 data II: Specific humidity computation and 2m->10m conversion
 
 For users, who do not have access to the Meteocloud from the previous
 section.
@@ -64,6 +64,13 @@ and surface pressure using
 
 ```
 python dewpoint_to_specific_humidity.py <era5_filename>
+```
+
+Also temperature and specific humidity can be converted from 2m to 10m
+using.
+
+```
+python 2m_to_10m_conversion.py <era5_filename>
 ```
 
 ### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
