@@ -74,22 +74,34 @@ python 2m_to_10m_conversion.py <era5_filename>
 ```
 
 ### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
-`prepare_ERA5_input.sh` prepares ERA5 as an input by remapping the
-ERA5 data, changing names and modifying units.
 
-The script is divided into three parts, which could be handled
-separately.
+The `prepare_ERA5_input.sh` script prepares ERA5 data by remapping,
+changing variable names, and modifying units. The script performs
+three main steps:
 
-1. Remapping
-2. Merging the data
-3. CLM3.5 specific data preparation.
+1. **Remapping** - Regrid ERA5 data to the target domain
+2. **Merging** - Combine different ERA5 datasets
+3. **CLM3.5 specific preparation** - Apply CLM3.5-specific formatting
 
-If remapping is to be used, the remapping weights for the ERA data as
-well as the grid definition file of the target domain should be
-created beforehand. The following commands can be used to create the
-necessary files:
+#### Remapping Setup
 
+When using remapping, the script requires remapping weights and a grid
+definition file for the target domain. These can be created either
+automatically by the script or manually beforehand.
+
+**Option 1: Automatic creation (recommended)**
+
+Specify the domain file and enable automatic generation:
+
+```bash
+sh prepare_ERA5_input.sh iyear=<year> imonth=<month> lwgtdis=true lgriddes=true domainfile=<eclm_domainfile.nc>
 ```
+
+**Option 2: Manual creation**
+
+Create the remapping weights and grid definition file manually:
+
+```bash
 cdo gendis,<eclm_domainfile.nc> <era5caf_yyyy_mm.nc> <wgtdis_era5caf_to_domain.nc>
 cdo gendis,<eclm_domainfile.nc> <era5meteo_yyyy_mm.nc> <wgtdis_era5meteo_to_domain.nc>
 cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
@@ -99,8 +111,12 @@ cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
 - `<wgtdis_era5caf_to_domain.nc>` can be chosen, illustrative example:
   `wgtdis_era5caf_to_eur11u-189976.nc`
 
-Usage: `sh prepare_ERA5_input.sh iyear=<year> imonth=<month>
-wgtcaf=<wgtcaf> wgtmeteo=<wgtmeteo> griddesfile=<griddesfile>` More
-options are available, see script for details.
+Then specify the created files as options:
+
+```bash
+sh prepare_ERA5_input.sh iyear=<year> imonth=<month> wgtcaf=<wgtcaf> wgtmeteo=<wgtmeteo> griddesfile=<griddesfile>
+```
+
+For additional options, see the script documentation.
 
 
