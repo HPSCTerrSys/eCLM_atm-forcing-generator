@@ -65,10 +65,19 @@ separately.
 2. Merging the data
 3. CLM3.5 specific data preparation.
 
-If remapping is to be used, the remapping weights for the ERA data as
-well as the grid definition file of the target domain should be
-created beforehand. The following commands can be used to create the
-necessary files:
+**Note**: If remapping is to be used, the remapping weights for the
+ERA data as well as the grid definition file of the target domain can
+be created by the script or created by the user beforehand.
+
+For creating the remapping weights and grid definition file by the
+script, the domain file has to be specified as an option:
+
+```
+sh prepare_ERA5_input.sh iyear=<year> imonth=<month> lwgtdis=true lgriddes=true domainfile=<eclm_domainfile.nc>
+```
+
+Alternatively, the following commands can be used to create the
+remapping weights and grid definition file yourself:
 
 ```
 cdo gendis,<eclm_domainfile.nc> <era5caf_yyyy_mm.nc> <wgtdis_era5caf_to_domain.nc>
@@ -76,8 +85,12 @@ cdo gendis,<eclm_domainfile.nc> <era5meteo_yyyy_mm.nc> <wgtdis_era5meteo_to_doma
 cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
 ```
 
-Usage: `sh prepare_ERA5_input.sh iyear=<year> imonth=<month>
-wgtcaf=<wgtcaf> wgtmeteo=<wgtmeteo> griddesfile=<griddesfile>` More
-options are available, see script for details.
+Then, the files can be specified as options:
+
+```
+sh prepare_ERA5_input.sh iyear=<year> imonth=<month> wgtcaf=<wgtcaf> wgtmeteo=<wgtmeteo> griddesfile=<griddesfile>
+```
+
+More options are available, see script for details.
 
 
