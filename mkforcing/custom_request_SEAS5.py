@@ -11,8 +11,8 @@ request = {
     "system": "51",
     "variable": [
         "mean_sea_level_pressure",  # convert to surface pressure, use elevation (barometric formula, ICAO standard), surface geopotential height, (`geopotential` from pressure level data)
-        "surface_thermal_radiation_downwards",  # maybe needs unit conversion J/m2 to W/m2
-        "surface_solar_radiation_downwards",
+        "surface_thermal_radiation_downwards",  # Unit conversion from accumulated value [J/m2] to mean rate [W/m2]
+        "surface_solar_radiation_downwards",  # Unit conversion from accumulated value [J/m2] to mean rate [W/m2]
         "total_precipitation",
         "10m_u_component_of_wind",
         "10m_v_component_of_wind",
