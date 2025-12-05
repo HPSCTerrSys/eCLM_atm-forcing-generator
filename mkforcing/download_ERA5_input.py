@@ -164,7 +164,7 @@ def generate_datarequest(year, monthstr, days,
         extension = detect_file_type(target)
 
         # Rename to final target with correct extension
-        final_target = f'{target}{extension}'
+        final_target = f'download_era5_{year}_{monthstr}{extension}'
         os.rename(target, final_target)
         target = final_target
 
