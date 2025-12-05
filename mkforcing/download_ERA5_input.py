@@ -140,7 +140,11 @@ def generate_datarequest(year, monthstr, days,
         # Adapt year, month and day to input values
         request["year"] = [str(year)]
         request["month"] = [monthstr]
-        request["day"] = days
+        if dataset == "seasonal-original-single-levels":
+            # First day of month specified for SEAS5
+            request["day"] = ["01"]
+        else:
+            request["day"] = days
 
     # Temporary filename w/o extension if not provided
     auto_detect_extension = target is None
