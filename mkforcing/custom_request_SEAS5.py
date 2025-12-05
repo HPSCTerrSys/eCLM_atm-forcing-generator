@@ -23,7 +23,7 @@ request = {
     "year": ["2025"],
     "month": ["09"],
     "day": ["01"],
-    "leadtime_hour": [str(h) for h in range(6, 5161, 6)],
+    "leadtime_hour": [str(h) for h in range(0, 5161, 6)],
     "data_format": "netcdf",
     "area": [51, 6, 50, 7]      # Selhausen
     # "area": [74, -42, 20, 69] # Europe
