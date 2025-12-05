@@ -11,18 +11,23 @@ Requirements:
     - CDS API credentials configured in ~/.cdsapirc
 
 Usage:
-    python download_ERA5_input.py <year> <month> <output_directory>
-    python download_ERA5_input.py 2017 7 ./output
+    python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
     python download_ERA5_input.py --help
 
 Note:
     CDS API credentials must be configured before use.
     See: https://cds.climate.copernicus.eu/api-how-to
 """
+import argparse
 import calendar
 import cdsapi
-import sys
+# import sys
 import os
+import tempfile
+
+
 
 def generate_days(year, month):
     """Get the number of days in a given month and year.
@@ -42,11 +47,52 @@ def generate_days(year, month):
 
     return days
 
+
+def detect_file_type(filepath):
+    """Detect if downloaded file is NetCDF, GRIB or ZIP format.
+
+    Args:
+        filepath (str): Path to the downloaded file
+
+    Returns:
+        str: File extension ('.nc' for NetCDF, '.zip' for ZIP, '.grib' for GRIB)
+
+    Raises:
+        ValueError: If file format is not recognized as NetCDF, GRIB, or ZIP
+    """
+    # Read file magic bytes
+    with open(filepath, 'rb') as f:
+        magic = f.read(8)
+
+    # ZIP files start with 'PK' (0x504B)
+    if magic[:2] == b'PK':
+        return '.zip'
+
+    # NetCDF files start with 'CDF' (0x43444601 or 0x43444602) or HDF5 signature
+    if magic[:3] == b'CDF' or magic[:4] == b'\x89HDF':
+        return '.nc'
+
+    # GRIB files start with 'GRIB'
+    if magic[:4] == b'GRIB':
+        return '.grib'
+
+    # If we reach here, the file format is not recognized
+    magic_hex = magic.hex()
+    raise ValueError(
+        f"Unrecognized file format for '{filepath}'. "
+        f"Magic bytes: {magic_hex}. "
+        f"Expected NetCDF (CDF/HDF5), GRIB, or ZIP (PK) format."
+    )
+
+
 def generate_datarequest(year, monthstr, days,
-                        dataset="reanalysis-era5-single-levels",
-                        request=None,
-                        target=None):
+                         dataset="reanalysis-era5-single-levels",
+                         request=None,
+                         target=None):
     """Generate and execute ERA5 data download request.
+
+    "ERA5 hourly data on single levels from 1940 to present":
+    https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview
 
     Args:
         year (int): Year to download
@@ -54,7 +100,7 @@ def generate_datarequest(year, monthstr, days,
         days (list): List of days in the month
         dataset (str, optional): CDS dataset name. Defaults to 'reanalysis-era5-single-levels'.
         request (dict, optional): Custom CDS request dictionary. If None, uses default request.
-        target (str, optional): Output filename. If None, uses 'download_era5_YYYY_MM.zip'.
+        target (str, optional): Output filename. If None, auto-detects extension based on downloaded file type.
 
     Returns:
         str: Path to downloaded file
@@ -88,25 +134,99 @@ def generate_datarequest(year, monthstr, days,
             ],
             "data_format": "netcdf",
             "download_format": "unarchived",
-            "area": [74, -42, 20, 69]
+            "area": [74, -42, 20, 69]  # N, W, S, E
         }
+    else:
+        # Adapt year, month and day to input values
+        request["year"] = [str(year)]
+        request["month"] = [monthstr]
+        request["day"] = days
 
-    # Default filename if not provided
-    if target is None:
-        target = f'download_era5_{year}_{monthstr}.zip'
+    # Temporary filename w/o extension if not provided
+    auto_detect_extension = target is None
+    if auto_detect_extension:
+        # Create a temporary file for download
+        temp_fd, target = tempfile.mkstemp(
+            prefix=f'download_era5_{year}_{monthstr}',
+            dir='.')
+        os.close(temp_fd)  # Close the file descriptor
 
     # Get the data from cds
     client.retrieve(dataset, request, target)
+
+    # If target was not provided, detect the file type after download
+    if auto_detect_extension:
+        # Detect the actual file type
+        extension = detect_file_type(target)
+
+        # Rename to final target with correct extension
+        final_target = f'{target}{extension}'
+        os.rename(target, final_target)
+        target = final_target
 
     return target
 
 
 if __name__ == "__main__":
 
-    # Get the year and month from command-line arguments
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    dirout = sys.argv[3]
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Download ERA5 reanalysis data from Copernicus Climate Data Store (CDS)."
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        required=True,
+        help="Year to download (e.g., 2017)"
+    )
+    parser.add_argument(
+        "--month",
+        type=int,
+        required=True,
+        help="Month to download (1-12)"
+    )
+    parser.add_argument(
+        "--dirout",
+        type=str,
+        required=True,
+        help="Output directory path"
+    )
+    parser.add_argument(
+        "--request",
+        type=str,
+        required=False,
+        help="Path to Python file defining custom 'request' variable"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=False,
+        default="reanalysis-era5-single-levels",
+        help="CDS dataset name (default: reanalysis-era5-single-levels)"
+    )
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+    year = args.year
+    month = args.month
+    dirout = args.dirout
+
+    # Load custom request if provided
+    custom_request = None
+    custom_dataset = args.dataset
+    if args.request:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
+        custom_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(custom_module)
+        if hasattr(custom_module, 'request'):
+            custom_request = custom_module.request
+            print(f"Loaded custom request from: {args.request}")
+        else:
+            print(f"Warning: No 'request' variable found in {args.request}, using default")
+        if hasattr(custom_module, 'dataset'):
+            custom_dataset = custom_module.dataset
+            print(f"Loaded custom dataset from: {args.request}")
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
@@ -122,8 +242,9 @@ if __name__ == "__main__":
     days = generate_days(year, month)
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
+    print(f"Dataset: {custom_dataset}")
     print(f"Output directory: {os.getcwd()}")
 
     # Execute download request
-    target = generate_datarequest(year, monthstr, days)
+    target = generate_datarequest(year, monthstr, days, dataset=custom_dataset, request=custom_request)
     print(f"Download complete: {os.path.abspath(target)}")
