@@ -94,7 +94,7 @@ def generate_datarequest(year, monthstr, days,
         days (list): List of days in the month
         dataset (str, optional): CDS dataset name. Defaults to 'reanalysis-era5-single-levels'.
         request (dict, optional): Custom CDS request dictionary. If None, uses default request.
-        target (str, optional): Output filename. If None, auto-detects extension based on downloaded file type.
+        target (str, optional): Output filename. If None, detects filetype and sets extension.
 
     Returns:
         str: Path to downloaded file
