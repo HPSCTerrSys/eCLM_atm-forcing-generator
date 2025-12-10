@@ -7,6 +7,7 @@ lmerge=true
 lclm3=false
 lmeteo=true			# Switch for using JSC-internal meteocloud data
 lunzip=true			# Switch for unzipping or (if false) copying the ERA5 data
+lrenametime=false		# Switch for renaming valid_time to time
 lwgtdis=false			# Switch for creating wgtdis file in script
 lgriddes=false			# Switch for creating griddes file in script
 ompthd=1
@@ -42,6 +43,7 @@ parse_arguments() {
             lclm3) lclm3="$value" ;;
             lmeteo) lmeteo="$value" ;;
             lunzip) lunzip="$value" ;;
+            lrenametime) lrenametime="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
@@ -87,6 +89,18 @@ do
     else
       # Copy already unzipped data
       cp ${pathdata}/data_stream-oper_stepType-instant.nc ${pathdata}/data_stream-oper_stepType-avg.nc ${tmpdir}
+    fi
+
+    if $lrenametime; then
+      # Rename valid_time to time if it exists (in particular needed if
+      # Meteocloud is not used)
+      for file in ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/data_stream-oper_stepType-avg.nc; do
+        # Renaming dimension 'valid_time' to 'time' in $file
+        ncrename -d valid_time,time "$file"
+
+        # Renaming variable 'valid_time' to 'time' in $file
+        ncrename -v valid_time,time "$file"
+      done
     fi
 
     if $lwgtdis; then
