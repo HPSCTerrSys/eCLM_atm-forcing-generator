@@ -92,27 +92,11 @@ do
     # Rename valid_time to time if it exists (in particular needed if
     # Meteocloud is not used)
     for file in ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/data_stream-oper_stepType-avg.nc; do
-      # Check and rename dimension
-      if ncdump -h "$file" | grep -q " time = "; then
-        echo "Dimension 'time' already exists in $file"
-      elif ncdump -h "$file" | grep -q " valid_time = "; then
-        echo "Renaming dimension 'valid_time' to 'time' in $file"
-        ncrename -d valid_time,time "$file"
-      else
-        echo "ERROR: Neither 'time' nor 'valid_time' dimension found in $file" >&2
-        exit 1
-      fi
+      # Renaming dimension 'valid_time' to 'time' in $file
+      ncrename -d valid_time,time "$file"
 
-      # Check and rename variable
-      if ncdump -h "$file" | grep -q " time("; then
-        echo "Variable 'time' already exists in $file"
-      elif ncdump -h "$file" | grep -q " valid_time("; then
-        echo "Renaming variable 'valid_time' to 'time' in $file"
-        ncrename -v valid_time,time "$file"
-      else
-        echo "ERROR: Neither 'time' nor 'valid_time' variable found in $file" >&2
-        exit 1
-      fi
+      # Renaming variable 'valid_time' to 'time' in $file
+      ncrename -v valid_time,time "$file"
     done
 
     if $lwgtdis; then
