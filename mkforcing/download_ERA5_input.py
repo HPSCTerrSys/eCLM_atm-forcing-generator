@@ -187,6 +187,13 @@ if __name__ == "__main__":
         help="Month to download (1-12). Required for default request, optional for custom request (uses month from custom request if not provided)."
     )
     parser.add_argument(
+        "--day",
+        type=str,
+        required=False,
+        default=None,
+        help="Day(s) to download as comma-separated values (e.g., '15' or '1,15,30'). If not provided, all days in the month are downloaded."
+    )
+    parser.add_argument(
         "--dirout",
         type=str,
         required=True,
@@ -269,8 +276,23 @@ if __name__ == "__main__":
     # Format the month with a leading zero if needed
     monthstr = f"{month:02d}"
 
-    # Get the list of days for the request
-    days = generate_days(year, month)
+    # Handle day: parse from argument, extract from custom request, or compute all days
+    if args.day is not None:
+        # Parse comma-separated day values
+        days = [int(d.strip()) for d in args.day.split(',')]
+        print(f"Using days from argument: {days}")
+    elif custom_request and "day" in custom_request:
+        # Extract from custom request
+        day_from_request = custom_request["day"]
+        if isinstance(day_from_request, list):
+            days = [int(d) for d in day_from_request]
+        else:
+            days = [int(day_from_request)]
+        print(f"Using days from custom request: {days}")
+    else:
+        # Compute all days in the month
+        days = generate_days(year, month)
+        print(f"Using all days in month: {len(days)} days")
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
     print(f"Dataset: {custom_dataset}")
