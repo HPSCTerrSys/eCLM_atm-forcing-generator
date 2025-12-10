@@ -93,9 +93,9 @@ do
     # Meteocloud is not used)
     for file in ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/data_stream-oper_stepType-avg.nc; do
       # Check and rename dimension
-      if ncdump -h "$file" | grep -q "^\s*time\s*="; then
+      if ncdump -h "$file" | grep -q " time = "; then
         echo "Dimension 'time' already exists in $file"
-      elif ncdump -h "$file" | grep -q "^\s*valid_time\s*="; then
+      elif ncdump -h "$file" | grep -q " valid_time = "; then
         echo "Renaming dimension 'valid_time' to 'time' in $file"
         ncrename -d valid_time,time "$file"
       else
@@ -104,9 +104,9 @@ do
       fi
 
       # Check and rename variable
-      if ncdump -h "$file" | grep -q "\s\+time("; then
+      if ncdump -h "$file" | grep -q " time("; then
         echo "Variable 'time' already exists in $file"
-      elif ncdump -h "$file" | grep -q "\s\+valid_time("; then
+      elif ncdump -h "$file" | grep -q " valid_time("; then
         echo "Renaming variable 'valid_time' to 'time' in $file"
         ncrename -v valid_time,time "$file"
       else
