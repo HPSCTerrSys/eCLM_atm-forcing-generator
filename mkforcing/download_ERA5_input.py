@@ -182,8 +182,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--month",
         type=int,
-        required=True,
-        help="Month to download (1-12)"
+        required=False,
+        default=None,
+        help="Month to download (1-12). Required for default request, optional for custom request (uses month from custom request if not provided)."
     )
     parser.add_argument(
         "--dirout",
@@ -240,6 +241,21 @@ if __name__ == "__main__":
         else:
             raise ValueError(
                 "Year is required. Provide it either as --year argument "
+                "or in the custom request file."
+            )
+
+    # Handle month: extract from custom request if not provided
+    if month is None:
+        if custom_request and "month" in custom_request:
+            month_from_request = custom_request["month"]
+            if isinstance(month_from_request, list):
+                month = int(month_from_request[0])
+            else:
+                month = int(month_from_request)
+            print(f"Using month from custom request: {month}")
+        else:
+            raise ValueError(
+                "Month is required. Provide it either as --month argument "
                 "or in the custom request file."
             )
 
