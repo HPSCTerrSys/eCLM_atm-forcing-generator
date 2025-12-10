@@ -175,8 +175,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--year",
         type=int,
-        required=True,
-        help="Year to download (e.g., 2017)"
+        required=False,
+        default=None,
+        help="Year to download (e.g., 2017). Required for default request, optional for custom request (uses year from custom request if not provided).",
     )
     parser.add_argument(
         "--month",
@@ -226,6 +227,21 @@ if __name__ == "__main__":
         if hasattr(custom_module, 'dataset'):
             custom_dataset = custom_module.dataset
             print(f"Loaded custom dataset from: {args.request}")
+
+    # Handle year: extract from custom request if not provided
+    if year is None:
+        if custom_request and "year" in custom_request:
+            year_from_request = custom_request["year"]
+            if isinstance(year_from_request, list):
+                year = int(year_from_request[0])
+            else:
+                year = int(year_from_request)
+            print(f"Using year from custom request: {year}")
+        else:
+            raise ValueError(
+                "Year is required. Provide it either as --year argument "
+                "or in the custom request file."
+            )
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
