@@ -44,6 +44,8 @@ parse_arguments() {
             lmeteo) lmeteo="$value" ;;
             lunzip) lunzip="$value" ;;
             lrenametime) lrenametime="$value" ;;
+            lwgtdis) lwgtdis="$value" ;;
+            lgriddes) lgriddes="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
