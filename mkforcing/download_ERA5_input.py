@@ -219,6 +219,13 @@ if __name__ == "__main__":
     month = args.month
     dirout = args.dirout
 
+    # Ensure the output directory exists, if not, create it
+    if not os.path.exists(dirout):
+        os.makedirs(dirout)
+
+    # change to output directory
+    os.chdir(dirout)
+
     # Load custom request if provided
     custom_request = None
     custom_dataset = args.dataset
@@ -265,13 +272,6 @@ if __name__ == "__main__":
                 "Month is required. Provide it either as --month argument "
                 "or in the custom request file."
             )
-
-    # Ensure the output directory exists, if not, create it
-    if not os.path.exists(dirout):
-        os.makedirs(dirout)
-
-    # change to output directory
-    os.chdir(dirout)
 
     # Format the month with a leading zero if needed
     monthstr = f"{month:02d}"
