@@ -28,7 +28,7 @@ request = {
     ],
     "data_format": "netcdf",
     "download_format": "unarchived",
-    "area": [51, 6, 50, 7]      # Selhausen
+    "area": [50.870906, 6.4421445, 50.870906, 6.4421445]      # Selhausen
     # "area": [74, -42, 20, 69] # Europe
 }
 
