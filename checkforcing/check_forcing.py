@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+
 # import os
 import sys
 from pathlib import Path
@@ -47,34 +48,34 @@ def check_forcing_file(forcing_file_path, variable_mappings):
             - 'warnings': List of warning messages
     """
     result = {
-        'file_exists': False,
-        'variables_found': [],
-        'variables_missing': [],
-        'value_checks': {},
-        'errors': [],
-        'warnings': []
+        "file_exists": False,
+        "variables_found": [],
+        "variables_missing": [],
+        "value_checks": {},
+        "errors": [],
+        "warnings": [],
     }
 
     if not forcing_file_path.exists():
-        result['errors'].append(f"File not found: {forcing_file_path}")
+        result["errors"].append(f"File not found: {forcing_file_path}")
         return result
 
-    result['file_exists'] = True
+    result["file_exists"] = True
 
     try:
-        with Dataset(str(forcing_file_path), 'r') as nc:
+        with Dataset(str(forcing_file_path), "r") as nc:
             nc_variables = list(nc.variables.keys())
 
             # Check which expected netCDF variables are present in forcing file
             for var in variable_mappings.values():
                 if var in nc_variables:
-                    result['variables_found'].append(var)
+                    result["variables_found"].append(var)
                 else:
-                    result['variables_missing'].append(var)
+                    result["variables_missing"].append(var)
 
             # Check for non-negative values in radiation and precipitation variables
             # These eCLM variables should map to non-negative NetCDF variables
-            nonneg_eclm_vars = ['swdn', 'lwdn', 'precn']
+            nonneg_eclm_vars = ["swdn", "lwdn", "precn"]
 
             for eclm_var in nonneg_eclm_vars:
                 if eclm_var in variable_mappings:
@@ -93,23 +94,23 @@ def check_forcing_file(forcing_file_path, variable_mappings):
                         neg_count = np.sum(var_data < 0)
                         total_count = var_data.size
 
-                        result['value_checks'][nc_var] = {
-                            'eclm_var': eclm_var,
-                            'min': float(min_val),
-                            'max': float(max_val),
-                            'has_negative': has_negative,
-                            'negative_count': int(neg_count),
-                            'total_count': int(total_count)
+                        result["value_checks"][nc_var] = {
+                            "eclm_var": eclm_var,
+                            "min": float(min_val),
+                            "max": float(max_val),
+                            "has_negative": has_negative,
+                            "negative_count": int(neg_count),
+                            "total_count": int(total_count),
                         }
 
                         if has_negative:
-                            result['errors'].append(
+                            result["errors"].append(
                                 f"{nc_var} (eCLM: {eclm_var}): Found {neg_count} negative "
                                 f"values (min={min_val:.4f}), but should be non-negative"
                             )
 
     except Exception as e:
-        result['errors'].append(f"Error reading forcing file: {e}")
+        result["errors"].append(f"Error reading forcing file: {e}")
 
     return result
 
@@ -125,12 +126,12 @@ def check_stream_forcing_files(root, base_dir):
         dict: Dictionary with check results for all forcing files
     """
     results = {
-        'files_checked': 0,
-        'files_valid': 0,
-        'files_with_errors': 0,
-        'file_results': {},
-        'total_errors': 0,
-        'total_warnings': 0
+        "files_checked": 0,
+        "files_valid": 0,
+        "files_with_errors": 0,
+        "file_results": {},
+        "total_errors": 0,
+        "total_warnings": 0,
     }
 
     # Extract field info from XML
@@ -168,35 +169,41 @@ def check_stream_forcing_files(root, base_dir):
     if forcing_names is None:
         return results
 
-    forcing_files = [line.strip() for line in forcing_names.text.strip().split("\n") if line.strip()]
+    forcing_files = [
+        line.strip() for line in forcing_names.text.strip().split("\n") if line.strip()
+    ]
 
     # Check each forcing file
     for forcing_file in forcing_files:
         forcing_file_path = forcing_path / forcing_file
-        results['files_checked'] += 1
+        results["files_checked"] += 1
 
         file_result = check_forcing_file(forcing_file_path, variable_mappings)
 
-        results['file_results'][forcing_file] = file_result
+        results["file_results"][forcing_file] = file_result
 
-        if file_result['errors']:
-            results['files_with_errors'] += 1
-            results['total_errors'] += len(file_result['errors'])
+        if file_result["errors"]:
+            results["files_with_errors"] += 1
+            results["total_errors"] += len(file_result["errors"])
         else:
-            results['files_valid'] += 1
+            results["files_valid"] += 1
 
-        results['total_warnings'] += len(file_result['warnings'])
+        results["total_warnings"] += len(file_result["warnings"])
 
     return results
 
 
-def print_datm_info(nml, base_dir):
+def print_datm_info(nml, base_dir, verbose=False):
     """Print parsed datm_in information.
 
     Args:
         nml: Namelist object from f90nml.read()
         base_dir (Path): Base directory of datm_in file
+        verbose (bool): Print detailed output
     """
+    if not verbose:
+        return
+
     print("\n" + "=" * 70)
     print("DATM Namelist Information")
     print("=" * 70)
@@ -226,13 +233,17 @@ def print_datm_info(nml, base_dir):
         print(f"  - {group_name}")
 
 
-def print_stream_info(stream_name, root):
+def print_stream_info(stream_name, root, verbose=False):
     """Print parsed stream file information.
 
     Args:
         stream_name (str): Name of the stream file
         root: XML root element from etree.parse()
+        verbose (bool): Print detailed output
     """
+    if not verbose:
+        return
+
     print("\n" + "-" * 70)
     print(f"Stream File: {stream_name}")
     print("-" * 70)
@@ -265,7 +276,11 @@ def print_stream_info(stream_name, root):
             print(f"  Path: {forcing_path.text.strip()}")
 
         if forcing_names is not None:
-            forcing_files = [line.strip() for line in forcing_names.text.strip().split("\n") if line.strip()]
+            forcing_files = [
+                line.strip()
+                for line in forcing_names.text.strip().split("\n")
+                if line.strip()
+            ]
             print(f"  Files: {len(forcing_files)}")
 
             # Show first few and last few files
@@ -289,7 +304,9 @@ def print_stream_info(stream_name, root):
                 if line:
                     parts = line.split()
                     if len(parts) >= 2:
-                        var_mappings.append((parts[0], parts[1]))  # (netcdf_var, eclm_var)
+                        var_mappings.append(
+                            (parts[0], parts[1])
+                        )  # (netcdf_var, eclm_var)
 
             print(f"\nVariable mappings: {len(var_mappings)}")
             for netcdf_var, eclm_var in var_mappings:
@@ -303,46 +320,87 @@ def print_forcing_check_results(check_results, verbose=False):
         check_results (dict): Output from check_stream_forcing_files()
         verbose (bool): Print detailed results for each file
     """
+    # In non-verbose mode, only show errors
+    if not verbose:
+        # Only show files with errors
+        for filename, file_result in check_results["file_results"].items():
+            if file_result["errors"]:
+                print(f"\n  ✗ {filename}:")
+
+                if not file_result["file_exists"]:
+                    print("      File not found")
+                    continue
+
+                if file_result["variables_missing"]:
+                    print(
+                        f"      Missing variables: {', '.join(file_result['variables_missing'])}"
+                    )
+
+                # Print value check results (errors only)
+                if file_result["value_checks"]:
+                    for nc_var, checks in file_result["value_checks"].items():
+                        if checks["has_negative"]:
+                            eclm_var = checks["eclm_var"]
+                            print(
+                                f"      {nc_var} (eCLM: {eclm_var}): {checks['negative_count']}/{checks['total_count']} "
+                                f"values are negative (min={checks['min']:.4f})"
+                            )
+
+                # Print other errors
+                for error in file_result["errors"]:
+                    if "negative values" not in error:  # Already printed above
+                        print(f"      {error}")
+        return
+
+    # Verbose mode: show everything
     print("\nForcing File Checks:")
     print(f"  Files checked: {check_results['files_checked']}")
     print(f"  Files valid: {check_results['files_valid']}")
     print(f"  Files with errors: {check_results['files_with_errors']}")
 
-    if check_results['total_errors'] > 0:
+    if check_results["total_errors"] > 0:
         print(f"  Total errors: {check_results['total_errors']}")
 
-    if check_results['total_warnings'] > 0:
+    if check_results["total_warnings"] > 0:
         print(f"  Total warnings: {check_results['total_warnings']}")
 
     # Show detailed results for files with errors or if verbose
-    for filename, file_result in check_results['file_results'].items():
-        if file_result['errors'] or verbose:
+    for filename, file_result in check_results["file_results"].items():
+        if file_result["errors"] or verbose:
             print(f"\n  File: {filename}")
 
-            if not file_result['file_exists']:
+            if not file_result["file_exists"]:
                 print("    ✗ File not found")
                 continue
 
-            if file_result['variables_missing']:
-                print(f"    ✗ Missing variables: {', '.join(file_result['variables_missing'])}")
+            if file_result["variables_missing"]:
+                print(
+                    f"    ✗ Missing variables: {', '.join(file_result['variables_missing'])}"
+                )
 
-            if file_result['variables_found'] and verbose:
-                print(f"    ✓ Found variables: {', '.join(file_result['variables_found'])}")
+            if file_result["variables_found"] and verbose:
+                print(
+                    f"    ✓ Found variables: {', '.join(file_result['variables_found'])}"
+                )
 
             # Print value check results
-            if file_result['value_checks']:
-                for nc_var, checks in file_result['value_checks'].items():
-                    eclm_var = checks['eclm_var']
-                    if checks['has_negative']:
-                        print(f"    ✗ {nc_var} (eCLM: {eclm_var}): {checks['negative_count']}/{checks['total_count']} "
-                              f"values are negative (min={checks['min']:.4f})")
+            if file_result["value_checks"]:
+                for nc_var, checks in file_result["value_checks"].items():
+                    eclm_var = checks["eclm_var"]
+                    if checks["has_negative"]:
+                        print(
+                            f"    ✗ {nc_var} (eCLM: {eclm_var}): {checks['negative_count']}/{checks['total_count']} "
+                            f"values are negative (min={checks['min']:.4f})"
+                        )
                     elif verbose:
-                        print(f"    ✓ {nc_var} (eCLM: {eclm_var}): All values non-negative "
-                              f"(range: [{checks['min']:.4f}, {checks['max']:.4f}])")
+                        print(
+                            f"    ✓ {nc_var} (eCLM: {eclm_var}): All values non-negative "
+                            f"(range: [{checks['min']:.4f}, {checks['max']:.4f}])"
+                        )
 
             # Print other errors
-            for error in file_result['errors']:
-                if 'negative values' not in error:  # Already printed above
+            for error in file_result["errors"]:
+                if "negative values" not in error:  # Already printed above
                     print(f"    ✗ {error}")
 
 
@@ -368,12 +426,13 @@ def main():
 
     # Parse datm_in using f90nml
     try:
-        print(f"Parsing datm_in: {args.datm_in}")
+        if args.verbose:
+            print(f"Parsing datm_in: {args.datm_in}")
         datm_in_path = Path(args.datm_in).resolve()
         nml = f90nml.read(datm_in_path)
         base_dir = datm_in_path.parent
 
-        print_datm_info(nml, base_dir)
+        print_datm_info(nml, base_dir, verbose=args.verbose)
     except Exception as e:
         print(f"\nError parsing datm_in: {e}", file=sys.stderr)
         return 1
@@ -400,21 +459,22 @@ def main():
             tree = etree.parse(str(stream_path))
             root = tree.getroot()
 
-            print_stream_info(stream_file, root)
+            print_stream_info(stream_file, root, verbose=args.verbose)
 
             # Check forcing files referenced in this stream
-            print("\nChecking forcing files...")
+            if args.verbose:
+                print("\nChecking forcing files...")
             check_results = check_stream_forcing_files(root, base_dir)
             print_forcing_check_results(check_results, verbose=args.verbose)
 
-            total_forcing_errors += check_results['total_errors']
+            total_forcing_errors += check_results["total_errors"]
 
         except FileNotFoundError:
             errors.append(f"Stream file not found: {stream_file}")
-            print(f"\n✗ {errors[-1]}", file=sys.stderr)
+            print(f"✗ {errors[-1]}", file=sys.stderr)
         except Exception as e:
             errors.append(f"Error parsing {stream_file}: {e}")
-            print(f"\n✗ {errors[-1]}", file=sys.stderr)
+            print(f"✗ {errors[-1]}", file=sys.stderr)
 
     # Summary
     print("\n" + "=" * 70)
@@ -428,10 +488,13 @@ def main():
         print(f"Forcing file errors: {total_forcing_errors}")
 
     if errors or total_forcing_errors > 0:
-        print("\n✗ Validation completed with errors")
+        if args.verbose:
+            print("\n✗ Validation completed with errors")
+        else:
+            print("\n✗ Validation failed")
         return 1
     else:
-        print("✓ All checks passed successfully")
+        print("\n✓ All checks passed successfully")
         return 0
 
 
