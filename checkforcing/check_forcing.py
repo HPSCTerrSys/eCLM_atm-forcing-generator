@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 import f90nml
 from lxml import etree
+import numpy as np
+from netCDF4 import Dataset
 
 
 def parse_datm_in(datm_in_path):
@@ -105,6 +107,7 @@ def parse_stream_file(stream_path, base_dir=None):
             - 'forcing_path': Directory containing forcing files
             - 'forcing_files': List of forcing file names
             - 'variable_mappings': Dict mapping eCLM vars to NetCDF vars
+                                   (e.g., {'swdn': 'FSDS', 'lwdn': 'FLDS'})
             - 'data_source': Data source type
 
     Raises:
@@ -160,7 +163,7 @@ def parse_stream_file(stream_path, base_dir=None):
         # Get variable mappings
         var_names = field_info.find("variableNames")
         if var_names is not None:
-            # Parse variable mappings (format: "eCLM_var  netcdf_var")
+            # Parse variable mappings (format: "netcdf_var  eclm_var")
             var_text = var_names.text.strip()
             for line in var_text.split("\n"):
                 line = line.strip()
@@ -168,8 +171,8 @@ def parse_stream_file(stream_path, base_dir=None):
                     # Split by whitespace
                     parts = line.split()
                     if len(parts) >= 2:
-                        eclm_var = parts[0]
-                        netcdf_var = parts[1]
+                        netcdf_var = parts[0]
+                        eclm_var = parts[1]
                         result["variable_mappings"][eclm_var] = netcdf_var
 
         # Get forcing file path
@@ -188,6 +191,147 @@ def parse_stream_file(stream_path, base_dir=None):
                     result["forcing_files"].append(line)
 
     return result
+
+
+def check_forcing_file(forcing_file_path, expected_variables, variable_mappings):
+    """Check a NetCDF forcing file for required variables and validate values.
+
+    Args:
+        forcing_file_path (Path): Path to the forcing NetCDF file
+        expected_variables (list): List of NetCDF variable names expected in file
+        variable_mappings (dict): Dict mapping eCLM vars to NetCDF vars
+
+    Returns:
+        dict: Dictionary containing check results with keys:
+            - 'file_exists': Boolean indicating if file exists
+            - 'variables_found': List of found variables
+            - 'variables_missing': List of missing variables
+            - 'value_checks': Dict of validation results for specific variables
+            - 'errors': List of error messages
+            - 'warnings': List of warning messages
+    """
+    result = {
+        'file_exists': False,
+        'variables_found': [],
+        'variables_missing': [],
+        'value_checks': {},
+        'errors': [],
+        'warnings': []
+    }
+
+    if not forcing_file_path.exists():
+        result['errors'].append(f"File not found: {forcing_file_path}")
+        return result
+
+    result['file_exists'] = True
+
+    try:
+        with Dataset(str(forcing_file_path), 'r') as nc:
+            nc_variables = list(nc.variables.keys())
+
+            # Check which expected variables are present
+            for var in expected_variables:
+                if var in nc_variables:
+                    result['variables_found'].append(var)
+                else:
+                    result['variables_missing'].append(var)
+
+            # Check for non-negative values in radiation and precipitation variables
+            # These eCLM variables should map to non-negative NetCDF variables
+            nonneg_eclm_vars = ['swdn', 'lwdn', 'precn']
+
+            for eclm_var in nonneg_eclm_vars:
+                if eclm_var in variable_mappings:
+                    nc_var = variable_mappings[eclm_var]
+
+                    if nc_var in nc_variables:
+                        # Read the variable data
+                        var_data = nc.variables[nc_var][:]
+
+                        # Check for negative values
+                        min_val = np.min(var_data)
+                        max_val = np.max(var_data)
+                        has_negative = min_val < 0
+
+                        # Count negative values
+                        neg_count = np.sum(var_data < 0)
+                        total_count = var_data.size
+
+                        result['value_checks'][nc_var] = {
+                            'eclm_var': eclm_var,
+                            'min': float(min_val),
+                            'max': float(max_val),
+                            'has_negative': has_negative,
+                            'negative_count': int(neg_count),
+                            'total_count': int(total_count)
+                        }
+
+                        if has_negative:
+                            result['errors'].append(
+                                f"{nc_var} (eCLM: {eclm_var}): Found {neg_count} negative "
+                                f"values (min={min_val:.4f}), but should be non-negative"
+                            )
+
+    except Exception as e:
+        result['errors'].append(f"Error reading NetCDF file: {e}")
+
+    return result
+
+
+def check_stream_forcing_files(stream_data, base_dir):
+    """Check all forcing files referenced in a stream file.
+
+    Args:
+        stream_data (dict): Output from parse_stream_file()
+        base_dir (Path): Base directory for resolving relative paths
+
+    Returns:
+        dict: Dictionary with check results for all forcing files
+    """
+    results = {
+        'files_checked': 0,
+        'files_valid': 0,
+        'files_with_errors': 0,
+        'file_results': {},
+        'total_errors': 0,
+        'total_warnings': 0
+    }
+
+    # Get forcing file path (can be relative)
+    forcing_path = stream_data.get('forcing_path', '')
+    if forcing_path:
+        if not Path(forcing_path).is_absolute():
+            forcing_path = base_dir / forcing_path
+        else:
+            forcing_path = Path(forcing_path)
+    else:
+        forcing_path = base_dir
+
+    # Get expected NetCDF variable names from mappings
+    expected_variables = list(stream_data['variable_mappings'].values())
+
+    # Check each forcing file
+    for forcing_file in stream_data['forcing_files']:
+        forcing_file_path = forcing_path / forcing_file
+        results['files_checked'] += 1
+
+        file_result = check_forcing_file(
+            forcing_file_path,
+            expected_variables,
+            stream_data['variable_mappings']
+        )
+
+        results['file_results'][forcing_file] = file_result
+
+        if file_result['errors']:
+            results['files_with_errors'] += 1
+            results['total_errors'] += len(file_result['errors'])
+        else:
+            results['files_valid'] += 1
+
+        results['total_warnings'] += len(file_result['warnings'])
+
+    return results
 
 
 def print_datm_info(datm_data):
@@ -251,7 +395,57 @@ def print_stream_info(stream_name, stream_data):
 
     print(f"\nVariable mappings: {len(stream_data['variable_mappings'])}")
     for eclm_var, netcdf_var in stream_data["variable_mappings"].items():
-        print(f"  {eclm_var:12s} -> {netcdf_var}")
+        print(f"  {netcdf_var:12s} (NetCDF) -> {eclm_var} (eCLM)")
+
+
+def print_forcing_check_results(check_results, verbose=False):
+    """Print forcing file check results.
+
+    Args:
+        check_results (dict): Output from check_stream_forcing_files()
+        verbose (bool): Print detailed results for each file
+    """
+    print("\nForcing File Checks:")
+    print(f"  Files checked: {check_results['files_checked']}")
+    print(f"  Files valid: {check_results['files_valid']}")
+    print(f"  Files with errors: {check_results['files_with_errors']}")
+
+    if check_results['total_errors'] > 0:
+        print(f"  Total errors: {check_results['total_errors']}")
+
+    if check_results['total_warnings'] > 0:
+        print(f"  Total warnings: {check_results['total_warnings']}")
+
+    # Show detailed results for files with errors or if verbose
+    for filename, file_result in check_results['file_results'].items():
+        if file_result['errors'] or verbose:
+            print(f"\n  File: {filename}")
+
+            if not file_result['file_exists']:
+                print("    ✗ File not found")
+                continue
+
+            if file_result['variables_missing']:
+                print(f"    ✗ Missing variables: {', '.join(file_result['variables_missing'])}")
+
+            if file_result['variables_found'] and verbose:
+                print(f"    ✓ Found variables: {', '.join(file_result['variables_found'])}")
+
+            # Print value check results
+            if file_result['value_checks']:
+                for nc_var, checks in file_result['value_checks'].items():
+                    eclm_var = checks['eclm_var']
+                    if checks['has_negative']:
+                        print(f"    ✗ {nc_var} (eCLM: {eclm_var}): {checks['negative_count']}/{checks['total_count']} "
+                              f"values are negative (min={checks['min']:.4f})")
+                    elif verbose:
+                        print(f"    ✓ {nc_var} (eCLM: {eclm_var}): All values non-negative "
+                              f"(range: [{checks['min']:.4f}, {checks['max']:.4f}])")
+
+            # Print other errors
+            for error in file_result['errors']:
+                if 'negative values' not in error:  # Already printed above
+                    print(f"    ✗ {error}")
 
 
 def main():
@@ -283,9 +477,10 @@ def main():
         print(f"\nError parsing datm_in: {e}", file=sys.stderr)
         return 1
 
-    # Parse each stream file
+    # Parse each stream file and check forcing files
     base_dir = datm_data["base_dir"]
     errors = []
+    total_forcing_errors = 0
 
     for stream_file in datm_data["stream_files"]:
         stream_path = base_dir / stream_file
@@ -293,6 +488,14 @@ def main():
         try:
             stream_data = parse_stream_file(stream_path, base_dir)
             print_stream_info(stream_file, stream_data)
+
+            # Check forcing files referenced in this stream
+            print("\nChecking forcing files...")
+            check_results = check_stream_forcing_files(stream_data, base_dir)
+            print_forcing_check_results(check_results, verbose=args.verbose)
+
+            total_forcing_errors += check_results['total_errors']
+
         except FileNotFoundError:
             errors.append(f"Stream file not found: {stream_file}")
             print(f"\n✗ {errors[-1]}", file=sys.stderr)
@@ -302,13 +505,20 @@ def main():
 
     # Summary
     print("\n" + "=" * 70)
+    print("Summary")
+    print("=" * 70)
+
     if errors:
-        print(f"Completed with {len(errors)} error(s)")
-        print("=" * 70)
+        print(f"Stream file errors: {len(errors)}")
+
+    if total_forcing_errors > 0:
+        print(f"Forcing file errors: {total_forcing_errors}")
+
+    if errors or total_forcing_errors > 0:
+        print("\n✗ Validation completed with errors")
         return 1
     else:
-        print("✓ Successfully parsed all files")
-        print("=" * 70)
+        print("✓ All checks passed successfully")
         return 0
 
 
