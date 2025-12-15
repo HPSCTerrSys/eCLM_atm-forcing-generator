@@ -30,106 +30,6 @@ import numpy as np
 from netCDF4 import Dataset
 
 
-def parse_stream_file(stream_path, base_dir=None):
-    """Parse a DATM stream XML file using lxml.
-
-    Args:
-        stream_path (str): Path to the stream file
-        base_dir (str, optional): Base directory for resolving relative paths
-
-    Returns:
-        dict: Dictionary containing parsed stream data with keys:
-            - 'domain_file': Path to domain file
-            - 'domain_path': Directory containing domain file
-            - 'forcing_path': Directory containing forcing files
-            - 'forcing_files': List of forcing file names
-            - 'variable_mappings': Dict mapping eCLM vars to NetCDF vars
-                                   (e.g., {'swdn': 'FSDS', 'lwdn': 'FLDS'})
-            - 'data_source': Data source type
-
-    Raises:
-        FileNotFoundError: If the stream file doesn't exist
-        ValueError: If the XML cannot be parsed
-    """
-    stream_path = Path(stream_path)
-
-    # Resolve relative path if base_dir is provided
-    if base_dir and not stream_path.is_absolute():
-        stream_path = Path(base_dir) / stream_path
-
-    if not stream_path.exists():
-        raise FileNotFoundError(f"Stream file not found: {stream_path}")
-
-    try:
-        # Parse the XML file
-        tree = etree.parse(str(stream_path))
-        root = tree.getroot()
-    except Exception as e:
-        raise ValueError(f"Failed to parse stream XML: {e}")
-
-    result = {
-        "domain_file": None,
-        "domain_path": None,
-        "forcing_path": None,
-        "forcing_files": [],
-        "variable_mappings": {},
-        "data_source": None,
-    }
-
-    # Extract data source
-    data_source = root.find("dataSource")
-    if data_source is not None:
-        result["data_source"] = data_source.text.strip()
-
-    # Extract domain information
-    domain_info = root.find("domainInfo")
-    if domain_info is not None:
-        # Get domain file path
-        domain_path = domain_info.find("filePath")
-        if domain_path is not None:
-            result["domain_path"] = domain_path.text.strip()
-
-        # Get domain file name
-        domain_names = domain_info.find("fileNames")
-        if domain_names is not None:
-            result["domain_file"] = domain_names.text.strip()
-
-    # Extract field information (forcing files)
-    field_info = root.find("fieldInfo")
-    if field_info is not None:
-        # Get variable mappings
-        var_names = field_info.find("variableNames")
-        if var_names is not None:
-            # Parse variable mappings (format: "netcdf_var  eclm_var")
-            var_text = var_names.text.strip()
-            for line in var_text.split("\n"):
-                line = line.strip()
-                if line:
-                    # Split by whitespace
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        netcdf_var = parts[0]
-                        eclm_var = parts[1]
-                        result["variable_mappings"][eclm_var] = netcdf_var
-
-        # Get forcing file path
-        forcing_path = field_info.find("filePath")
-        if forcing_path is not None:
-            result["forcing_path"] = forcing_path.text.strip()
-
-        # Get forcing file names
-        forcing_names = field_info.find("fileNames")
-        if forcing_names is not None:
-            # Parse file names (one per line)
-            file_text = forcing_names.text.strip()
-            for line in file_text.split("\n"):
-                line = line.strip()
-                if line:
-                    result["forcing_files"].append(line)
-
-    return result
-
-
 def check_forcing_file(forcing_file_path, expected_variables, variable_mappings):
     """Check a NetCDF forcing file for required variables and validate values.
 
@@ -215,11 +115,11 @@ def check_forcing_file(forcing_file_path, expected_variables, variable_mappings)
     return result
 
 
-def check_stream_forcing_files(stream_data, base_dir):
+def check_stream_forcing_files(root, base_dir):
     """Check all forcing files referenced in a stream file.
 
     Args:
-        stream_data (dict): Output from parse_stream_file()
+        root: XML root element from etree.parse()
         base_dir (Path): Base directory for resolving relative paths
 
     Returns:
@@ -234,9 +134,15 @@ def check_stream_forcing_files(stream_data, base_dir):
         'total_warnings': 0
     }
 
+    # Extract field info from XML
+    field_info = root.find("fieldInfo")
+    if field_info is None:
+        return results
+
     # Get forcing file path (can be relative)
-    forcing_path = stream_data.get('forcing_path', '')
-    if forcing_path:
+    forcing_path_elem = field_info.find("filePath")
+    if forcing_path_elem is not None:
+        forcing_path = forcing_path_elem.text.strip()
         if not Path(forcing_path).is_absolute():
             forcing_path = base_dir / forcing_path
         else:
@@ -244,18 +150,39 @@ def check_stream_forcing_files(stream_data, base_dir):
     else:
         forcing_path = base_dir
 
+    # Get variable mappings (format: "netcdf_var  eclm_var")
+    variable_mappings = {}
+    var_names = field_info.find("variableNames")
+    if var_names is not None:
+        var_text = var_names.text.strip()
+        for line in var_text.split("\n"):
+            line = line.strip()
+            if line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    netcdf_var = parts[0]
+                    eclm_var = parts[1]
+                    variable_mappings[eclm_var] = netcdf_var
+
     # Get expected NetCDF variable names from mappings
-    expected_variables = list(stream_data['variable_mappings'].values())
+    expected_variables = list(variable_mappings.values())
+
+    # Get forcing file names
+    forcing_names = field_info.find("fileNames")
+    if forcing_names is None:
+        return results
+
+    forcing_files = [line.strip() for line in forcing_names.text.strip().split("\n") if line.strip()]
 
     # Check each forcing file
-    for forcing_file in stream_data['forcing_files']:
+    for forcing_file in forcing_files:
         forcing_file_path = forcing_path / forcing_file
         results['files_checked'] += 1
 
         file_result = check_forcing_file(
             forcing_file_path,
             expected_variables,
-            stream_data['variable_mappings']
+            variable_mappings
         )
 
         results['file_results'][forcing_file] = file_result
@@ -307,43 +234,74 @@ def print_datm_info(nml, base_dir):
         print(f"  - {group_name}")
 
 
-def print_stream_info(stream_name, stream_data):
+def print_stream_info(stream_name, root):
     """Print parsed stream file information.
 
     Args:
         stream_name (str): Name of the stream file
-        stream_data (dict): Output from parse_stream_file()
+        root: XML root element from etree.parse()
     """
     print("\n" + "-" * 70)
     print(f"Stream File: {stream_name}")
     print("-" * 70)
 
-    if stream_data["data_source"]:
-        print(f"Data source: {stream_data['data_source']}")
+    # Get data source
+    data_source = root.find("dataSource")
+    if data_source is not None:
+        print(f"Data source: {data_source.text.strip()}")
 
-    print("\nDomain:")
-    print(f"  Path: {stream_data['domain_path']}")
-    print(f"  File: {stream_data['domain_file']}")
+    # Get domain info
+    domain_info = root.find("domainInfo")
+    if domain_info is not None:
+        domain_path = domain_info.find("filePath")
+        domain_file = domain_info.find("fileNames")
 
-    print("\nForcing data:")
-    print(f"  Path: {stream_data['forcing_path']}")
-    print(f"  Files: {len(stream_data['forcing_files'])}")
+        print("\nDomain:")
+        if domain_path is not None:
+            print(f"  Path: {domain_path.text.strip()}")
+        if domain_file is not None:
+            print(f"  File: {domain_file.text.strip()}")
 
-    if stream_data["forcing_files"]:
-        # Show first few and last few files
-        if len(stream_data["forcing_files"]) <= 6:
-            for f in stream_data["forcing_files"]:
-                print(f"    - {f}")
-        else:
-            for f in stream_data["forcing_files"][:3]:
-                print(f"    - {f}")
-            print(f"    ... ({len(stream_data['forcing_files']) - 6} more files)")
-            for f in stream_data["forcing_files"][-3:]:
-                print(f"    - {f}")
+    # Get field info
+    field_info = root.find("fieldInfo")
+    if field_info is not None:
+        forcing_path = field_info.find("filePath")
+        forcing_names = field_info.find("fileNames")
 
-    print(f"\nVariable mappings: {len(stream_data['variable_mappings'])}")
-    for eclm_var, netcdf_var in stream_data["variable_mappings"].items():
-        print(f"  {netcdf_var:12s} (NetCDF) -> {eclm_var} (eCLM)")
+        print("\nForcing data:")
+        if forcing_path is not None:
+            print(f"  Path: {forcing_path.text.strip()}")
+
+        if forcing_names is not None:
+            forcing_files = [line.strip() for line in forcing_names.text.strip().split("\n") if line.strip()]
+            print(f"  Files: {len(forcing_files)}")
+
+            # Show first few and last few files
+            if len(forcing_files) <= 6:
+                for f in forcing_files:
+                    print(f"    - {f}")
+            else:
+                for f in forcing_files[:3]:
+                    print(f"    - {f}")
+                print(f"    ... ({len(forcing_files) - 6} more files)")
+                for f in forcing_files[-3:]:
+                    print(f"    - {f}")
+
+        # Get variable mappings
+        var_names = field_info.find("variableNames")
+        if var_names is not None:
+            var_text = var_names.text.strip()
+            var_mappings = []
+            for line in var_text.split("\n"):
+                line = line.strip()
+                if line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        var_mappings.append((parts[0], parts[1]))  # (netcdf_var, eclm_var)
+
+            print(f"\nVariable mappings: {len(var_mappings)}")
+            for netcdf_var, eclm_var in var_mappings:
+                print(f"  {netcdf_var:12s} (NetCDF) -> {eclm_var} (eCLM)")
 
 
 def print_forcing_check_results(check_results, verbose=False):
@@ -446,12 +404,15 @@ def main():
         stream_path = base_dir / stream_file
 
         try:
-            stream_data = parse_stream_file(stream_path, base_dir)
-            print_stream_info(stream_file, stream_data)
+            # Parse stream XML file using lxml
+            tree = etree.parse(str(stream_path))
+            root = tree.getroot()
+
+            print_stream_info(stream_file, root)
 
             # Check forcing files referenced in this stream
             print("\nChecking forcing files...")
-            check_results = check_stream_forcing_files(stream_data, base_dir)
+            check_results = check_stream_forcing_files(root, base_dir)
             print_forcing_check_results(check_results, verbose=args.verbose)
 
             total_forcing_errors += check_results['total_errors']
