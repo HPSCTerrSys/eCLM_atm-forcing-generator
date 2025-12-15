@@ -65,11 +65,8 @@ def check_forcing_file(forcing_file_path, variable_mappings):
         with Dataset(str(forcing_file_path), 'r') as nc:
             nc_variables = list(nc.variables.keys())
 
-            # Get expected NetCDF variable names from mappings
-            expected_variables = list(variable_mappings.values())
-
-            # Check which expected variables are present
-            for var in expected_variables:
+            # Check which expected netCDF variables are present in forcing file
+            for var in variable_mappings.values():
                 if var in nc_variables:
                     result['variables_found'].append(var)
                 else:
@@ -112,7 +109,7 @@ def check_forcing_file(forcing_file_path, variable_mappings):
                             )
 
     except Exception as e:
-        result['errors'].append(f"Error reading NetCDF file: {e}")
+        result['errors'].append(f"Error reading forcing file: {e}")
 
     return result
 
