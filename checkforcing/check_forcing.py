@@ -30,12 +30,11 @@ import numpy as np
 from netCDF4 import Dataset
 
 
-def check_forcing_file(forcing_file_path, expected_variables, variable_mappings):
+def check_forcing_file(forcing_file_path, variable_mappings):
     """Check a NetCDF forcing file for required variables and validate values.
 
     Args:
         forcing_file_path (Path): Path to the forcing NetCDF file
-        expected_variables (list): List of NetCDF variable names expected in file
         variable_mappings (dict): Dict mapping eCLM vars to NetCDF vars
 
     Returns:
@@ -65,6 +64,9 @@ def check_forcing_file(forcing_file_path, expected_variables, variable_mappings)
     try:
         with Dataset(str(forcing_file_path), 'r') as nc:
             nc_variables = list(nc.variables.keys())
+
+            # Get expected NetCDF variable names from mappings
+            expected_variables = list(variable_mappings.values())
 
             # Check which expected variables are present
             for var in expected_variables:
@@ -164,9 +166,6 @@ def check_stream_forcing_files(root, base_dir):
                     eclm_var = parts[1]
                     variable_mappings[eclm_var] = netcdf_var
 
-    # Get expected NetCDF variable names from mappings
-    expected_variables = list(variable_mappings.values())
-
     # Get forcing file names
     forcing_names = field_info.find("fileNames")
     if forcing_names is None:
@@ -179,11 +178,7 @@ def check_stream_forcing_files(root, base_dir):
         forcing_file_path = forcing_path / forcing_file
         results['files_checked'] += 1
 
-        file_result = check_forcing_file(
-            forcing_file_path,
-            expected_variables,
-            variable_mappings
-        )
+        file_result = check_forcing_file(forcing_file_path, variable_mappings)
 
         results['file_results'][forcing_file] = file_result
 
