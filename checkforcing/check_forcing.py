@@ -115,12 +115,87 @@ def check_forcing_file(forcing_file_path, variable_mappings):
     return result
 
 
-def check_stream_forcing_files(root, base_dir):
+def fix_negative_values_in_file(forcing_file_path, variable_mappings):
+    """Fix negative values in a NetCDF forcing file by setting them to zero.
+
+    Args:
+        forcing_file_path (Path): Path to the forcing NetCDF file
+        variable_mappings (dict): Dict mapping eCLM vars to NetCDF vars
+
+    Returns:
+        dict: Dictionary with fix results:
+            - 'fixed': Boolean indicating if any values were fixed
+            - 'variables_fixed': Dict of variable names and count of values fixed
+            - 'error': Error message if fixing failed
+    """
+    result = {
+        'fixed': False,
+        'variables_fixed': {},
+        'error': None
+    }
+
+    if not forcing_file_path.exists():
+        result['error'] = f"File not found: {forcing_file_path}"
+        return result
+
+    try:
+        # Open in write mode
+        with Dataset(str(forcing_file_path), 'r+') as nc:
+            nc_variables = list(nc.variables.keys())
+
+            # Variables that should be non-negative
+            nonneg_eclm_vars = ['swdn', 'lwdn', 'precn']
+            fixed_vars = []
+
+            for eclm_var in nonneg_eclm_vars:
+                if eclm_var in variable_mappings:
+                    nc_var = variable_mappings[eclm_var]
+
+                    if nc_var in nc_variables:
+                        # Read the variable data
+                        var_data = nc.variables[nc_var][:]
+
+                        # Check for negative values
+                        neg_mask = var_data < 0
+                        neg_count = np.sum(neg_mask)
+
+                        if neg_count > 0:
+                            # Set negative values to zero
+                            var_data[neg_mask] = 0
+                            nc.variables[nc_var][:] = var_data
+
+                            result['variables_fixed'][nc_var] = int(neg_count)
+                            fixed_vars.append(f"{nc_var}({neg_count})")
+                            result['fixed'] = True
+
+            # Update history attribute if we fixed anything
+            if result['fixed']:
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+                history_entry = (
+                    f"{timestamp}: check_forcing.py --fix-negative: "
+                    f"Set negative values to zero in {', '.join(fixed_vars)}\n"
+                )
+
+                # Prepend to existing history or create new one
+                if hasattr(nc, 'history'):
+                    nc.history = history_entry + nc.history
+                else:
+                    nc.history = history_entry.strip()
+
+    except Exception as e:
+        result['error'] = f"Error fixing file: {e}"
+
+    return result
+
+
+def check_stream_forcing_files(root, base_dir, fix_negative=False):
     """Check all forcing files referenced in a stream file.
 
     Args:
         root: XML root element from etree.parse()
         base_dir (Path): Base directory for resolving relative paths
+        fix_negative (bool): Fix negative values by setting them to zero
 
     Returns:
         dict: Dictionary with check results for all forcing files
@@ -129,6 +204,7 @@ def check_stream_forcing_files(root, base_dir):
         "files_checked": 0,
         "files_valid": 0,
         "files_with_errors": 0,
+        "files_fixed": 0,
         "file_results": {},
         "total_errors": 0,
         "total_warnings": 0,
@@ -179,6 +255,26 @@ def check_stream_forcing_files(root, base_dir):
         results["files_checked"] += 1
 
         file_result = check_forcing_file(forcing_file_path, variable_mappings)
+
+        # Check if file has negative value errors
+        has_negative_errors = False
+        if file_result["value_checks"]:
+            for checks in file_result["value_checks"].values():
+                if checks["has_negative"]:
+                    has_negative_errors = True
+                    break
+
+        # Fix negative values if requested and errors exist
+        if fix_negative and has_negative_errors:
+            fix_result = fix_negative_values_in_file(forcing_file_path, variable_mappings)
+            file_result["fix_result"] = fix_result
+
+            if fix_result["fixed"]:
+                results["files_fixed"] += 1
+                # Re-check the file after fixing
+                file_result = check_forcing_file(forcing_file_path, variable_mappings)
+                file_result["was_fixed"] = True
+                file_result["fix_result"] = fix_result
 
         results["file_results"][forcing_file] = file_result
 
@@ -320,11 +416,22 @@ def print_forcing_check_results(check_results, verbose=False):
         check_results (dict): Output from check_stream_forcing_files()
         verbose (bool): Print detailed results for each file
     """
-    # In non-verbose mode, only show errors
+    # In non-verbose mode, only show errors and fixes
     if not verbose:
-        # Only show files with errors
+        # Show files that were fixed
         for filename, file_result in check_results["file_results"].items():
-            if file_result["errors"]:
+            if file_result.get("was_fixed"):
+                fix_info = file_result.get("fix_result", {})
+                if fix_info.get("fixed"):
+                    vars_fixed = ", ".join([
+                        f"{var}({count})"
+                        for var, count in fix_info["variables_fixed"].items()
+                    ])
+                    print(f"\n  ✓ Fixed {filename}: {vars_fixed}")
+
+        # Show files with errors (that weren't fixed or still have errors)
+        for filename, file_result in check_results["file_results"].items():
+            if file_result["errors"] and not file_result.get("was_fixed"):
                 print(f"\n  ✗ {filename}:")
 
                 if not file_result["file_exists"]:
@@ -358,6 +465,9 @@ def print_forcing_check_results(check_results, verbose=False):
     print(f"  Files valid: {check_results['files_valid']}")
     print(f"  Files with errors: {check_results['files_with_errors']}")
 
+    if check_results.get("files_fixed", 0) > 0:
+        print(f"  Files fixed: {check_results['files_fixed']}")
+
     if check_results["total_errors"] > 0:
         print(f"  Total errors: {check_results['total_errors']}")
 
@@ -368,6 +478,16 @@ def print_forcing_check_results(check_results, verbose=False):
     for filename, file_result in check_results["file_results"].items():
         if file_result["errors"] or verbose:
             print(f"\n  File: {filename}")
+
+            # Show fix info if file was fixed
+            if file_result.get("was_fixed"):
+                fix_info = file_result.get("fix_result", {})
+                if fix_info.get("fixed"):
+                    vars_fixed = ", ".join([
+                        f"{var}({count})"
+                        for var, count in fix_info["variables_fixed"].items()
+                    ])
+                    print(f"    ✓ Fixed negative values: {vars_fixed}")
 
             if not file_result["file_exists"]:
                 print("    ✗ File not found")
@@ -422,6 +542,12 @@ def main():
         "-v", "--verbose", action="store_true", help="Print verbose output"
     )
 
+    parser.add_argument(
+        "--fix-negative",
+        action="store_true",
+        help="Fix negative values by setting them to zero and update file history",
+    )
+
     args = parser.parse_args()
 
     # Parse datm_in using f90nml
@@ -464,7 +590,9 @@ def main():
             # Check forcing files referenced in this stream
             if args.verbose:
                 print("\nChecking forcing files...")
-            check_results = check_stream_forcing_files(root, base_dir)
+            check_results = check_stream_forcing_files(
+                root, base_dir, fix_negative=args.fix_negative
+            )
             print_forcing_check_results(check_results, verbose=args.verbose)
 
             total_forcing_errors += check_results["total_errors"]
