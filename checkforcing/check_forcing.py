@@ -30,69 +30,6 @@ import numpy as np
 from netCDF4 import Dataset
 
 
-def parse_datm_in(datm_in_path):
-    """Parse datm_in namelist file using f90nml.
-
-    Args:
-        datm_in_path (str): Path to the datm_in file
-
-    Returns:
-        dict: Dictionary containing parsed namelist data with keys:
-            - 'namelists': Full namelist object from f90nml
-            - 'stream_files': List of stream file names
-            - 'domain_file': Path to domain file (if specified)
-            - 'base_dir': Base directory of datm_in file
-
-    Raises:
-        FileNotFoundError: If the datm_in file doesn't exist
-        ValueError: If the namelist cannot be parsed
-    """
-    datm_in_path = Path(datm_in_path).resolve()
-
-    if not datm_in_path.exists():
-        raise FileNotFoundError(f"datm_in file not found: {datm_in_path}")
-
-    try:
-        # Parse the namelist file
-        nml = f90nml.read(datm_in_path)
-    except Exception as e:
-        raise ValueError(f"Failed to parse datm_in: {e}")
-
-    result = {
-        "namelists": nml,
-        "stream_files": [],
-        "domain_file": None,
-        "base_dir": datm_in_path.parent,
-    }
-
-    # Extract stream file information
-    if "shr_strdata_nml" in nml:
-        shr_strdata = nml["shr_strdata_nml"]
-
-        # Get domain file
-        if "domainfile" in shr_strdata:
-            result["domain_file"] = shr_strdata["domainfile"]
-
-        # Extract stream file names from 'streams' variable
-        if "streams" in shr_strdata:
-            streams = shr_strdata["streams"]
-
-            # streams can be a single string or a list of strings
-            if isinstance(streams, str):
-                streams = [streams]
-
-            # Each stream entry format: "filename year1 year2 year3"
-            # Extract just the filename (first part before space)
-            for stream_entry in streams:
-                stream_entry = stream_entry.strip()
-                if stream_entry:
-                    # Split by whitespace and take first element (filename)
-                    filename = stream_entry.split()[0]
-                    result["stream_files"].append(filename)
-
-    return result
-
-
 def parse_stream_file(stream_path, base_dir=None):
     """Parse a DATM stream XML file using lxml.
 
@@ -334,28 +271,39 @@ def check_stream_forcing_files(stream_data, base_dir):
     return results
 
 
-def print_datm_info(datm_data):
+def print_datm_info(nml, base_dir):
     """Print parsed datm_in information.
 
     Args:
-        datm_data (dict): Output from parse_datm_in()
+        nml: Namelist object from f90nml.read()
+        base_dir (Path): Base directory of datm_in file
     """
     print("\n" + "=" * 70)
     print("DATM Namelist Information")
     print("=" * 70)
 
-    print(f"\nBase directory: {datm_data['base_dir']}")
+    print(f"\nBase directory: {base_dir}")
 
-    if datm_data["domain_file"]:
-        print(f"Domain file: {datm_data['domain_file']}")
+    # Get domain file if available
+    if "shr_strdata_nml" in nml and "domainfile" in nml["shr_strdata_nml"]:
+        print(f"Domain file: {nml['shr_strdata_nml']['domainfile']}")
 
-    print(f"\nStream files found: {len(datm_data['stream_files'])}")
-    for i, stream_file in enumerate(datm_data["stream_files"], 1):
-        print(f"  {i}. {stream_file}")
+    # Get stream files if available
+    if "shr_strdata_nml" in nml and "streams" in nml["shr_strdata_nml"]:
+        streams = nml["shr_strdata_nml"]["streams"]
+        if isinstance(streams, str):
+            streams = [streams]
+
+        # Extract filenames (first part before space)
+        stream_files = [s.strip().split()[0] for s in streams if s.strip()]
+
+        print(f"\nStream files found: {len(stream_files)}")
+        for i, stream_file in enumerate(stream_files, 1):
+            print(f"  {i}. {stream_file}")
 
     # Print namelist groups
     print("\nNamelist groups:")
-    for group_name in datm_data["namelists"]:
+    for group_name in nml:
         print(f"  - {group_name}")
 
 
@@ -468,21 +416,33 @@ def main():
 
     args = parser.parse_args()
 
-    # Parse datm_in
+    # Parse datm_in using f90nml
     try:
         print(f"Parsing datm_in: {args.datm_in}")
-        datm_data = parse_datm_in(args.datm_in)
-        print_datm_info(datm_data)
+        datm_in_path = Path(args.datm_in).resolve()
+        nml = f90nml.read(datm_in_path)
+        base_dir = datm_in_path.parent
+
+        print_datm_info(nml, base_dir)
     except Exception as e:
         print(f"\nError parsing datm_in: {e}", file=sys.stderr)
         return 1
 
+    # Extract stream files from namelist
+    stream_files = []
+    if "shr_strdata_nml" in nml and "streams" in nml["shr_strdata_nml"]:
+        streams = nml["shr_strdata_nml"]["streams"]
+        if isinstance(streams, str):
+            streams = [streams]
+
+        # Extract filenames (first part before space)
+        stream_files = [s.strip().split()[0] for s in streams if s.strip()]
+
     # Parse each stream file and check forcing files
-    base_dir = datm_data["base_dir"]
     errors = []
     total_forcing_errors = 0
 
-    for stream_file in datm_data["stream_files"]:
+    for stream_file in stream_files:
         stream_path = base_dir / stream_file
 
         try:
