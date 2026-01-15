@@ -1,6 +1,8 @@
 ## Download for SEAS5 forecast variables
 # https://cds.climate.copernicus.eu/datasets/seasonal-original-single-levels?tab=download
 
+# 24-HOURLY / DAILY VARIABLES
+
 # Forecast for 7 months
 
 # import cdsapi
@@ -10,15 +12,18 @@ request = {
     "originating_centre": "ecmwf",
     "system": "51",
     "variable": [
-        "mean_sea_level_pressure",  # convert to surface pressure, use elevation (hypsometric formula), surface geopotential height (orography)
-        "orography",  # used to convert mslp to sp
+        # # constant
+        # "orography",  # used to convert mslp to sp
+        # 24-hourly
         "surface_thermal_radiation_downwards",  # Unit conversion from accumulated value [J/m2] to mean rate [W/m2]
         "surface_solar_radiation_downwards",  # Unit conversion from accumulated value [J/m2] to mean rate [W/m2]
         "total_precipitation",
-        "10m_u_component_of_wind",
-        "10m_v_component_of_wind",
-        "2m_temperature",
-        "2m_dewpoint_temperature",
+        # # 6-hourly
+        # "mean_sea_level_pressure",  # convert to surface pressure, use elevation (hypsometric formula), surface geopotential height (orography)
+        # "10m_u_component_of_wind",
+        # "10m_v_component_of_wind",
+        # "2m_temperature",
+        # "2m_dewpoint_temperature",
     ],
     "year": ["2025"],
     "month": ["09"],
