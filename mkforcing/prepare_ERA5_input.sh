@@ -44,6 +44,8 @@ parse_arguments() {
             lmeteo) lmeteo="$value" ;;
             lunzip) lunzip="$value" ;;
             lrenametime) lrenametime="$value" ;;
+            lwgtdis) lwgtdis="$value" ;;
+            lgriddes) lgriddes="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
@@ -95,8 +97,8 @@ do
       # Rename valid_time to time if it exists (in particular needed if
       # Meteocloud is not used)
       for file in ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/data_stream-oper_stepType-avg.nc; do
-        # Renaming dimension 'valid_time' to 'time' in $file
-        ncrename -d valid_time,time "$file"
+        # # Renaming dimension 'valid_time' to 'time' in $file
+        # ncrename -d valid_time,time "$file"
 
         # Renaming variable 'valid_time' to 'time' in $file
         ncrename -v valid_time,time "$file"
