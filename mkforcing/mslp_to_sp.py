@@ -305,65 +305,142 @@ def add_surface_pressure_to_netcdf(filename, elevation_var="z", temp_var="t2m", 
         print(f"Elevation range: {np.min(elevation):.1f} to {np.max(elevation):.1f} m")
 
         # Determine time dimension for 12h offset
-        # Assume first dimension is time
-        time_dim = nc.variables[temp_var].dimensions[0]
+        # Check for SEAS5 structure (number, forecast_reference_time, forecast_period, lat, lon)
+        # vs ERA5 structure (time, lat, lon)
+        dim_names = nc.variables[temp_var].dimensions
+        print(f"Dimension names: {dim_names}")
+
+        # Find the time dimension - prefer 'forecast_period' for SEAS5, otherwise first dim
+        if "forecast_period" in dim_names:
+            time_dim = "forecast_period"
+            time_axis = dim_names.index("forecast_period")
+        elif "time" in dim_names:
+            time_dim = "time"
+            time_axis = dim_names.index("time")
+        else:
+            # Fall back to first dimension
+            time_dim = dim_names[0]
+            time_axis = 0
+
         time_size = nc.dimensions[time_dim].size
-        print(f"Time dimension: {time_dim} with size {time_size}")
+        print(f"Time dimension: {time_dim} (axis {time_axis}) with size {time_size}")
 
         # Calculate surface pressure
         print("Calculating surface pressure...")
 
+        # For SEAS5 data with forecast_period as time dimension, we need to
+        # process along the forecast_period axis while keeping other dimensions
+        # The mslp_to_surface_pressure function works element-wise via numpy
+
         # Create array for surface pressure
         sp = np.zeros_like(msl)
 
-        # For the first timestep (index 0), we don't have 12h ago data
-        # Use current temperature for both
-        if time_size > 0:
-            print("Processing first timestep (no 12h-ago data available)...")
-            sp[0, ...] = mslp_to_surface_pressure(
-                msl[0, ...],
-                elevation,
-                t2m[0, ...],
-                t2m[0, ...],  # Use current temp as 12h-ago temp
-                "Pa"
-            )
+        # For SEAS5 structure: (number, forecast_reference_time, forecast_period, lat, lon)
+        # time_axis = 2, so we need to slice along axis 2
+        if time_axis == 2:
+            # SEAS5 structure
+            print("Detected SEAS5 data structure (ensemble data)...")
 
-        # For remaining timesteps, check if we can use 12h offset
-        # Assuming hourly data, 12h offset = 12 timesteps back
-        # For other time resolutions, this logic may need adjustment
-        if time_size > 12:
-            print("Processing remaining timesteps with 12h-ago data...")
-            for t in range(12, time_size):
-                sp[t, ...] = mslp_to_surface_pressure(
-                    msl[t, ...],
-                    elevation,
-                    t2m[t, ...],
-                    t2m[t - 12, ...],  # Temperature 12 timesteps ago
+            # For the first timestep (index 0), we don't have 12h ago data
+            if time_size > 0:
+                print("Processing first timestep (no 12h-ago data available)...")
+                sp[:, :, 0, :, :] = mslp_to_surface_pressure(
+                    msl[:, :, 0, :, :],
+                    elevation[:, :, 0, :, :],
+                    t2m[:, :, 0, :, :],
+                    t2m[:, :, 0, :, :],  # Use current temp as 12h-ago temp
                     "Pa"
                 )
 
-            # For timesteps 1-11, use current temp (no 12h data yet)
-            if time_size > 1:
-                print("Processing timesteps 1-11 without 12h-ago data...")
-                for t in range(1, min(12, time_size)):
+            # For 6-hourly data, 12h = 2 timesteps back
+            # For hourly data, 12h = 12 timesteps back
+            # Assume 6-hourly if time_size <= 8 per day, otherwise hourly
+            timesteps_12h = 2 if time_size <= 8 else 12
+
+            if time_size > timesteps_12h:
+                print(f"Processing remaining timesteps with 12h-ago data (offset={timesteps_12h})...")
+                for t in range(timesteps_12h, time_size):
+                    sp[:, :, t, :, :] = mslp_to_surface_pressure(
+                        msl[:, :, t, :, :],
+                        elevation[:, :, t, :, :],
+                        t2m[:, :, t, :, :],
+                        t2m[:, :, t - timesteps_12h, :, :],
+                        "Pa"
+                    )
+
+                # For timesteps 1 to timesteps_12h-1, use current temp
+                if time_size > 1:
+                    print(f"Processing timesteps 1-{min(timesteps_12h, time_size)-1} without 12h-ago data...")
+                    for t in range(1, min(timesteps_12h, time_size)):
+                        sp[:, :, t, :, :] = mslp_to_surface_pressure(
+                            msl[:, :, t, :, :],
+                            elevation[:, :, t, :, :],
+                            t2m[:, :, t, :, :],
+                            t2m[:, :, t, :, :],
+                            "Pa"
+                        )
+            elif time_size > 1:
+                print("Processing all timesteps without 12h-ago data...")
+                for t in range(1, time_size):
+                    sp[:, :, t, :, :] = mslp_to_surface_pressure(
+                        msl[:, :, t, :, :],
+                        elevation[:, :, t, :, :],
+                        t2m[:, :, t, :, :],
+                        t2m[:, :, t, :, :],
+                        "Pa"
+                    )
+        else:
+            # ERA5 structure - time is first dimension
+            print("Detected ERA5 data structure...")
+
+            # For the first timestep (index 0), we don't have 12h ago data
+            if time_size > 0:
+                print("Processing first timestep (no 12h-ago data available)...")
+                sp[0, ...] = mslp_to_surface_pressure(
+                    msl[0, ...],
+                    elevation[0, ...] if elevation.shape[0] == time_size else elevation,
+                    t2m[0, ...],
+                    t2m[0, ...],  # Use current temp as 12h-ago temp
+                    "Pa"
+                )
+
+            # For remaining timesteps, check if we can use 12h offset
+            # Assuming hourly data, 12h offset = 12 timesteps back
+            if time_size > 12:
+                print("Processing remaining timesteps with 12h-ago data...")
+                for t in range(12, time_size):
+                    elev_t = elevation[t, ...] if elevation.shape[0] == time_size else elevation
                     sp[t, ...] = mslp_to_surface_pressure(
                         msl[t, ...],
-                        elevation,
+                        elev_t,
+                        t2m[t, ...],
+                        t2m[t - 12, ...],
+                        "Pa"
+                    )
+
+                # For timesteps 1-11, use current temp
+                if time_size > 1:
+                    print("Processing timesteps 1-11 without 12h-ago data...")
+                    for t in range(1, min(12, time_size)):
+                        elev_t = elevation[t, ...] if elevation.shape[0] == time_size else elevation
+                        sp[t, ...] = mslp_to_surface_pressure(
+                            msl[t, ...],
+                            elev_t,
+                            t2m[t, ...],
+                            t2m[t, ...],
+                            "Pa"
+                        )
+            elif time_size > 1:
+                print("Processing all timesteps without 12h-ago data...")
+                for t in range(1, time_size):
+                    elev_t = elevation[t, ...] if elevation.shape[0] == time_size else elevation
+                    sp[t, ...] = mslp_to_surface_pressure(
+                        msl[t, ...],
+                        elev_t,
                         t2m[t, ...],
                         t2m[t, ...],
                         "Pa"
                     )
-        elif time_size > 1:
-            # If we have fewer than 12 timesteps, process without 12h offset
-            print("Processing all timesteps without 12h-ago data (less than 12 timesteps)...")
-            for t in range(1, time_size):
-                sp[t, ...] = mslp_to_surface_pressure(
-                    msl[t, ...],
-                    elevation,
-                    t2m[t, ...],
-                    t2m[t, ...],
-                    "Pa"
-                )
 
         # Create the new variable
         print("Creating new variable 'sp'...")
