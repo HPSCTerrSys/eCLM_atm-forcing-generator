@@ -7,6 +7,23 @@ Start by sourcing the provided environment file
 source jsc.2024_Intel.sh
 ```
 
+Provide a Python virtual environment including all necessary modules,
+in particular `cdsapi` for downloading. It is important to load or
+activate the pyvenv after sourcing the environment file, since the
+environment file loads Python modules itself.
+
+First usage - creation of pyvenv:
+```
+	python -m venv python_cdsapi
+	source python_cdsapi/bin/activate
+	pip install cdsapi
+```
+
+Existing pyvenv - activating the pyvenv:
+```
+	source python_cdsapi/bin/activate
+```
+
 ## Creation of forcing data from SEAS5
 
 Creation of SEAS5 forcing files is adapted from the creation of ERA5
@@ -14,6 +31,10 @@ forcing files.
 
 The folder `mkforcing/` contains the scripts that assist the SEAS5
 retrieval.
+
+```
+	cd mkforcing
+```
 
 ### Download of SEAS5 data
 
@@ -43,7 +64,7 @@ currently NOT SUPPORTED for SEAS5 download.
 
 ### Preparation of SEAS5 data: all variable to 06h
 
-First, we want to have all variables in 6-hourly interval
+Next, we want to have all variables available in 6-hourly interval
 
 - from constant: `z` has to be ported (same values as before)
 - from daily: `strd`, `ssrd` (thermal, solar, each accumulated) and
@@ -58,7 +79,7 @@ The script outputs radiation directly as flux variables (`flds`,
 `fsds`) in W/m².
 
 ```bash
-python seas5_daily_to_6hourly.py --const cdsapidwn_SEAS5_const/download_era5_2026_01.nc --daily cdsapidwn_SEAS5_24h/download_era5_2026_01.nc --hourly cdsapidwn_SEAS5_06h/download_era5_2026_01.nc --output cdsapidwn_SEAS5/download_era5_2026_01.nc
+	python seas5_daily_to_6hourly.py --const cdsapidwn_SEAS5_const/download_era5_2026_01.nc --daily cdsapidwn_SEAS5_24h/download_era5_2026_01.nc --hourly cdsapidwn_SEAS5_06h/download_era5_2026_01.nc --output cdsapidwn_SEAS5/download_era5_2026_01.nc
 ```
 
 ### Preparation of SEAS5 data: correct input variables
@@ -69,25 +90,25 @@ Steps for preparing SEAS5 data as eCLM input data
    file)
 
 ```bash
-python orography_to_elevation.py cdsapidwn_SEAS5/download_era5_2026_01.nc
+	python orography_to_elevation.py cdsapidwn_SEAS5/download_era5_2026_01.nc
 ```
 
 2. Mean sea level pressure to surface pressure
 
 ```bash
-python mslp_to_sp.py cdsapidwn_SEAS5/download_era5_2026_01.nc --elevation-var elevation
+	python mslp_to_sp.py cdsapidwn_SEAS5/download_era5_2026_01.nc --elevation-var elevation
 ```
 
 3. Humidity computed from dewpoint temperature and surface pressure
 
 ```
-python dewpoint_to_specific_humidity.py cdsapidwn_SEAS5/download_era5_2026_01.nc
+	python dewpoint_to_specific_humidity.py cdsapidwn_SEAS5/download_era5_2026_01.nc
 ```
 
 4. Temperature and Specific Humidity converted from 2m to 10m
 
 ```
-python 2m_to_10m_conversion.py cdsapidwn_SEAS5/download_era5_2026_01.nc
+	python 2m_to_10m_conversion.py cdsapidwn_SEAS5/download_era5_2026_01.nc
 ```
 
 ### Preparation of SEAS5 data: Remapping, Data merging, CLM3.5
@@ -96,5 +117,5 @@ python 2m_to_10m_conversion.py cdsapidwn_SEAS5/download_era5_2026_01.nc
 Check inputs and replace according to your case.
 
 ```
-sh prepare_SEAS5_input.sh lwgtdis=true lgriddes=true wgtcaf=../wgtdis_era5caf_to_DE-RuS-$(date +%y%m%d).nc griddesfile=../griddes_DE-RuS_$(date +%y%m%d).txt  iyear=2026 imonth=01 author="Johannes KELLER" email="jo.keller@fz-juelich.de" tmpdir=tmpdir pathdata=../cdsapidwn_SEAS5
+	sh prepare_SEAS5_input.sh lwgtdis=true lgriddes=true wgtcaf=../wgtdis_era5caf_to_DE-RuS-$(date +%y%m%d).nc griddesfile=../griddes_DE-RuS_$(date +%y%m%d).txt  iyear=2026 imonth=01 author="Johannes KELLER" email="jo.keller@fz-juelich.de" tmpdir=tmpdir pathdata=../cdsapidwn_SEAS5
 ```
