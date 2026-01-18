@@ -17,6 +17,7 @@ The folder `mkforcing/` contains three scripts that assist the ERA5 retrieval.
 
 Note: This worfklow is not fully tested.
 
+(era5forcing-download)=
 ### Download of ERA5 data
 
 `download_ERA5_input.py` contains a prepared retrieval for the cdsapi python module.
