@@ -54,9 +54,8 @@ First, we want to have all variables in 6-hourly interval
   and half the value in the middle two intervals, then converted
   to flux (W/m²) by dividing by the time interval.
 
-The script outputs radiation directly as flux variables (`flds`, `fsds`)
-in W/m², so the separate `accumulated_radiation_to_flux.py` step is
-not needed for SEAS5 data.
+The script outputs radiation directly as flux variables (`flds`,
+`fsds`) in W/m².
 
 ```bash
 python seas5_daily_to_6hourly.py --const cdsapidwn_SEAS5_const/download_era5_2026_01.nc --daily cdsapidwn_SEAS5_24h/download_era5_2026_01.nc --hourly cdsapidwn_SEAS5_06h/download_era5_2026_01.nc --output cdsapidwn_SEAS5/download_era5_2026_01.nc

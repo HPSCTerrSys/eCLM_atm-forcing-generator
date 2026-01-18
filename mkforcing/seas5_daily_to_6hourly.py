@@ -149,14 +149,17 @@ def distribute_daily_precip_to_6hourly(ds_daily, forecast_periods_6h):
     return tp_6h
 
 
-def distribute_daily_radiation_to_6hourly(ds_daily, var_name, forecast_periods_6h):
+def distribute_daily_radiation_to_6hourly_flux(ds_daily, var_name, forecast_periods_6h):
     """
-    Distribute daily radiation to 6-hourly intervals.
+    Distribute daily radiation to 6-hourly intervals and convert to flux.
 
     For radiation (strd, ssrd):
     - Zero in first 6-hour interval (night: 00-06)
     - Half the daily value in middle two intervals (day: 06-12, 12-18)
     - Zero in last 6-hour interval (night: 18-24)
+
+    The daily accumulated radiation (J/m²) is converted to flux (W/m²) by
+    dividing by the time interval (6 hours = 21600 seconds).
 
     Parameters
     ----------
@@ -170,7 +173,7 @@ def distribute_daily_radiation_to_6hourly(ds_daily, var_name, forecast_periods_6
     Returns
     -------
     np.ndarray
-        Radiation variable at 6-hourly resolution
+        Radiation flux (W/m²) at 6-hourly resolution
     """
     rad_daily = ds_daily[var_name]
     daily_periods_raw = ds_daily["forecast_period"].values
@@ -186,8 +189,11 @@ def distribute_daily_radiation_to_6hourly(ds_daily, var_name, forecast_periods_6
     n_lon = rad_daily.sizes.get("longitude", 1)
     n_6h = len(forecast_periods_6h)
 
+    # Time interval in seconds (6 hours)
+    dt_seconds = 6 * 3600  # 21600 seconds
+
     # Create output array
-    rad_6h = np.zeros((n_number, n_ref_time, n_6h, n_lat, n_lon), dtype=np.float32)
+    flux_6h = np.zeros((n_number, n_ref_time, n_6h, n_lat, n_lon), dtype=np.float32)
 
     # For each daily period, distribute to 4 6-hourly periods
     for i, daily_period_hours in enumerate(daily_periods_hours):
@@ -209,19 +215,24 @@ def distribute_daily_radiation_to_6hourly(ds_daily, var_name, forecast_periods_6
             )
             continue
 
-        # Daily value
+        # Daily accumulated value (J/m²)
         daily_value = rad_daily.isel(forecast_period=i).values
 
-        # First interval (night): 0
-        rad_6h[:, :, indices_6h[0], :, :] = 0.0
-        # Second interval (day): half
-        rad_6h[:, :, indices_6h[1], :, :] = daily_value / 2.0
-        # Third interval (day): half
-        rad_6h[:, :, indices_6h[2], :, :] = daily_value / 2.0
-        # Fourth interval (night): 0
-        rad_6h[:, :, indices_6h[3], :, :] = 0.0
+        # Convert to flux (W/m²): energy per 6-hour interval / time in seconds
+        # Half the daily energy goes to each of the two "day" intervals
+        # Flux = (daily_value / 2) / dt_seconds
+        flux_value = (daily_value / 2.0) / dt_seconds
 
-    return rad_6h
+        # First interval (night): 0
+        flux_6h[:, :, indices_6h[0], :, :] = 0.0
+        # Second interval (day): flux
+        flux_6h[:, :, indices_6h[1], :, :] = flux_value
+        # Third interval (day): flux
+        flux_6h[:, :, indices_6h[2], :, :] = flux_value
+        # Fourth interval (night): 0
+        flux_6h[:, :, indices_6h[3], :, :] = 0.0
+
+    return flux_6h
 
 
 def main():
@@ -298,14 +309,14 @@ def main():
     print("Distributing daily precipitation to 6-hourly...")
     tp_6h = distribute_daily_precip_to_6hourly(ds_daily, forecast_periods_6h)
 
-    # 3. Distribute daily radiation to 6-hourly
-    print("Distributing daily strd (thermal radiation) to 6-hourly...")
-    strd_6h = distribute_daily_radiation_to_6hourly(
+    # 3. Distribute daily radiation to 6-hourly and convert to flux (W/m²)
+    print("Distributing daily strd (thermal radiation) to 6-hourly flux (flds)...")
+    flds_6h = distribute_daily_radiation_to_6hourly_flux(
         ds_daily, "strd", forecast_periods_6h
     )
 
-    print("Distributing daily ssrd (solar radiation) to 6-hourly...")
-    ssrd_6h = distribute_daily_radiation_to_6hourly(
+    print("Distributing daily ssrd (solar radiation) to 6-hourly flux (fsds)...")
+    fsds_6h = distribute_daily_radiation_to_6hourly_flux(
         ds_daily, "ssrd", forecast_periods_6h
     )
 
@@ -341,9 +352,9 @@ def main():
         attrs=ds_daily["tp"].attrs,
     )
 
-    # Add strd variable
-    ds_out["strd"] = xr.DataArray(
-        data=strd_6h,
+    # Add flds variable (thermal radiation flux, converted from strd)
+    ds_out["flds"] = xr.DataArray(
+        data=flds_6h,
         dims=[
             "number",
             "forecast_reference_time",
@@ -351,12 +362,17 @@ def main():
             "latitude",
             "longitude",
         ],
-        attrs=ds_daily["strd"].attrs,
+        attrs={
+            "units": "W m-2",
+            "long_name": "Downward longwave radiation at surface",
+            "standard_name": "surface_downwelling_longwave_flux_in_air",
+            "description": "Converted from daily accumulated strd by distributing to 6-hourly intervals and dividing by time",
+        },
     )
 
-    # Add ssrd variable
-    ds_out["ssrd"] = xr.DataArray(
-        data=ssrd_6h,
+    # Add fsds variable (solar radiation flux, converted from ssrd)
+    ds_out["fsds"] = xr.DataArray(
+        data=fsds_6h,
         dims=[
             "number",
             "forecast_reference_time",
@@ -364,7 +380,12 @@ def main():
             "latitude",
             "longitude",
         ],
-        attrs=ds_daily["ssrd"].attrs,
+        attrs={
+            "units": "W m-2",
+            "long_name": "Downward shortwave radiation at surface",
+            "standard_name": "surface_downwelling_shortwave_flux_in_air",
+            "description": "Converted from daily accumulated ssrd by distributing to 6-hourly intervals and dividing by time",
+        },
     )
 
     # Write output (unless dry-run)
@@ -394,12 +415,12 @@ def main():
     print(f"  z: constant orography, broadcast to {n_timesteps} time steps")
     print("  tp: daily precipitation divided by 4 for each 6-hourly interval")
     print(
-        "  strd: daily thermal radiation - "
-        + "0 at night (first/last), half at day (middle)"
+        "  flds: thermal radiation flux (W/m²) - "
+        + "0 at night, flux at day (converted from strd)"
     )
     print(
-        "  ssrd: daily solar radiation - "
-        + "0 at night (first/last), half at day (middle)"
+        "  fsds: solar radiation flux (W/m²) - "
+        + "0 at night, flux at day (converted from ssrd)"
     )
 
 
