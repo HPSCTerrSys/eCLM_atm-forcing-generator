@@ -17,6 +17,9 @@ If --output is not specified, the 6-hourly file will be modified in place.
 """
 
 import argparse
+import os
+import sys
+
 import numpy as np
 import xarray as xr
 
@@ -266,6 +269,13 @@ def main():
     # Determine output file early
     output_file = args.output if args.output else args.hourly
     in_place = output_file == args.hourly
+
+    # Check if output directory exists
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        print(f"Error: Output directory does not exist: {output_dir}")
+        print(f"Please create it with: mkdir -p {output_dir}")
+        sys.exit(1)
 
     if in_place:
         print(f"Note: Modifying {args.hourly} in place")
