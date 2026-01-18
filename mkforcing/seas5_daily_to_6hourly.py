@@ -406,10 +406,54 @@ def main():
     else:
         print(f"Writing output to: {output_file}")
 
-        # Use encoding to ensure proper compression and data types
+        # Build encoding dict preserving original encodings where possible
         encoding = {}
-        for var in ds_out.data_vars:
-            encoding[var] = {"zlib": True, "complevel": 4}
+
+        # Preserve encoding for all coordinates from the 6-hourly file
+        for coord in ds_6h.coords:
+            if ds_6h[coord].encoding:
+                encoding[coord] = {
+                    k: v
+                    for k, v in ds_6h[coord].encoding.items()
+                    if k not in ("source", "original_shape")
+                }
+
+        # Preserve encoding for existing data variables from the 6-hourly file
+        for var in ds_6h.data_vars:
+            if var in ds_out.data_vars and ds_6h[var].encoding:
+                encoding[var] = {
+                    k: v
+                    for k, v in ds_6h[var].encoding.items()
+                    if k not in ("source", "original_shape")
+                }
+                # Ensure compression is enabled
+                encoding[var].setdefault("zlib", True)
+                encoding[var].setdefault("complevel", 4)
+
+        # Preserve encoding for z from constant file
+        if "z" in ds_out.data_vars and ds_const["z"].encoding:
+            encoding["z"] = {
+                k: v
+                for k, v in ds_const["z"].encoding.items()
+                if k not in ("source", "original_shape")
+            }
+            encoding["z"].setdefault("zlib", True)
+            encoding["z"].setdefault("complevel", 4)
+
+        # Preserve encoding for tp from daily file
+        if "tp" in ds_out.data_vars and ds_daily["tp"].encoding:
+            encoding["tp"] = {
+                k: v
+                for k, v in ds_daily["tp"].encoding.items()
+                if k not in ("source", "original_shape")
+            }
+            encoding["tp"].setdefault("zlib", True)
+            encoding["tp"].setdefault("complevel", 4)
+
+        # For flds/fsds (derived from strd/ssrd), use compression with float32
+        for var in ("flds", "fsds"):
+            if var in ds_out.data_vars and var not in encoding:
+                encoding[var] = {"zlib": True, "complevel": 4, "dtype": "float32"}
 
         ds_out.to_netcdf(output_file, encoding=encoding)
 
