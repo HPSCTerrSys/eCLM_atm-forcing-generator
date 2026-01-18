@@ -409,44 +409,48 @@ def main():
         # Build encoding dict preserving original encodings where possible
         encoding = {}
 
+        # Valid encoding parameters for netCDF4 backend
+        valid_encodings = {
+            "compression",
+            "dtype",
+            "least_significant_digit",
+            "zlib",
+            "_FillValue",
+            "fletcher32",
+            "complevel",
+            "chunksizes",
+            "shuffle",
+            "contiguous",
+            "calendar",
+            "units",
+        }
+
+        def filter_encoding(enc):
+            """Filter encoding dict to only valid netCDF4 parameters."""
+            return {k: v for k, v in enc.items() if k in valid_encodings}
+
         # Preserve encoding for all coordinates from the 6-hourly file
         for coord in ds_6h.coords:
             if ds_6h[coord].encoding:
-                encoding[coord] = {
-                    k: v
-                    for k, v in ds_6h[coord].encoding.items()
-                    if k not in ("source", "original_shape")
-                }
+                encoding[coord] = filter_encoding(ds_6h[coord].encoding)
 
         # Preserve encoding for existing data variables from the 6-hourly file
         for var in ds_6h.data_vars:
             if var in ds_out.data_vars and ds_6h[var].encoding:
-                encoding[var] = {
-                    k: v
-                    for k, v in ds_6h[var].encoding.items()
-                    if k not in ("source", "original_shape")
-                }
+                encoding[var] = filter_encoding(ds_6h[var].encoding)
                 # Ensure compression is enabled
                 encoding[var].setdefault("zlib", True)
                 encoding[var].setdefault("complevel", 4)
 
         # Preserve encoding for z from constant file
         if "z" in ds_out.data_vars and ds_const["z"].encoding:
-            encoding["z"] = {
-                k: v
-                for k, v in ds_const["z"].encoding.items()
-                if k not in ("source", "original_shape")
-            }
+            encoding["z"] = filter_encoding(ds_const["z"].encoding)
             encoding["z"].setdefault("zlib", True)
             encoding["z"].setdefault("complevel", 4)
 
         # Preserve encoding for tp from daily file
         if "tp" in ds_out.data_vars and ds_daily["tp"].encoding:
-            encoding["tp"] = {
-                k: v
-                for k, v in ds_daily["tp"].encoding.items()
-                if k not in ("source", "original_shape")
-            }
+            encoding["tp"] = filter_encoding(ds_daily["tp"].encoding)
             encoding["tp"].setdefault("zlib", True)
             encoding["tp"].setdefault("complevel", 4)
 
