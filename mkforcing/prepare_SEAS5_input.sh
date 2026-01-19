@@ -82,8 +82,12 @@ do
     ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
     ncwa --overwrite -a number ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
 
-    # Renaming variable 'valid_time' to 'time' in $file
+    # 1) Renaming variable 'valid_time' to 'time' in $file
+    # 2) Renaming dimension 'forecast_period' to 'valid_time' in $file
+    # Background: With this naming scheme the CDO remap command below will generate a time variable
+    # called "time" in "seconds since 1970-01-01" as for ERA5.
     ncrename -v valid_time,time ${tmpdir}/download_era5_${year}_${month}.nc
+    ncrename -d forecast_period,valid_time ${tmpdir}/download_era5_${year}_${month}.nc
 
     if $lwgtdis; then
       cdo gendis,${domainfile} ${tmpdir}/download_era5_${year}_${month}.nc ${wgtcaf}
