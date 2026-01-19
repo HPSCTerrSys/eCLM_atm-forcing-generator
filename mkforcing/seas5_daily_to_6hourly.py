@@ -456,6 +456,21 @@ def main():
         "units": "hours",
     }
 
+    # Compute valid_time = forecast_reference_time + forecast_period
+    # forecast_reference_time is in seconds since epoch, forecast_period in hours
+    ref_time_seconds = ds_6h["forecast_reference_time"].values[0]
+    valid_time_seconds = ref_time_seconds + target_periods_hours * 3600
+    ds_out["valid_time"] = xr.DataArray(
+        data=valid_time_seconds,
+        dims=["forecast_period"],
+        attrs={
+            "standard_name": "time",
+            "long_name": "time",
+            "units": "seconds since 1970-01-01T00:00:00",
+            "calendar": "proleptic_gregorian",
+        },
+    )
+
     # Add z
     ds_out["z"] = xr.DataArray(data=z_data, dims=dims, attrs=z_const.attrs)
 
