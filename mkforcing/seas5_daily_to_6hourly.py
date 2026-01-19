@@ -465,14 +465,30 @@ def main():
     else:
         ref_time_seconds = float(ref_time)
     valid_time_seconds = (ref_time_seconds + target_periods_hours * 3600).astype(np.int64)
+    # ds_out["valid_time"] = xr.DataArray(
+    #     data=valid_time_seconds,
+    #     dims=["forecast_period"],
+    #     attrs={
+    #         "standard_name": "time",
+    #         "long_name": "time",
+    #         "units": "seconds since 1970-01-01",
+    #         "calendar": "proleptic_gregorian",
+    #     },
+    # )
+
+    # Also add time in hours since 1900-01-01 (common format for climate data)
+    # Hours from 1900-01-01 to 1970-01-01: 613608 hours
+    hours_1900_to_1970 = 613608
+    time_hours = (valid_time_seconds / 3600 + hours_1900_to_1970).astype(np.int32)
     ds_out["valid_time"] = xr.DataArray(
-        data=valid_time_seconds,
+        data=time_hours,
         dims=["forecast_period"],
         attrs={
             "standard_name": "time",
             "long_name": "time",
-            "units": "seconds since 1970-01-01",
-            "calendar": "proleptic_gregorian",
+            "units": "hours since 1900-01-01 00:00:00.0",
+            "calendar": "gregorian",
+            "axis": "T",
         },
     )
 
@@ -548,8 +564,9 @@ def main():
         if ds_daily["tp"].encoding:
             encoding["tp"].update(filter_encoding(ds_daily["tp"].encoding))
 
-        # valid_time should be int64, not float
+        # valid_time should be int64, time should be int32
         encoding["valid_time"] = {"dtype": "int64"}
+        encoding["time"] = {"dtype": "int32"}
 
         ds_out.to_netcdf(output_file, encoding=encoding)
 
