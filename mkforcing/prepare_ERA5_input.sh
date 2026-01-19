@@ -44,6 +44,8 @@ parse_arguments() {
             lmeteo) lmeteo="$value" ;;
             lunzip) lunzip="$value" ;;
             lrenametime) lrenametime="$value" ;;
+            lwgtdis) lwgtdis="$value" ;;
+            lgriddes) lgriddes="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
@@ -95,8 +97,8 @@ do
       # Rename valid_time to time if it exists (in particular needed if
       # Meteocloud is not used)
       for file in ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/data_stream-oper_stepType-avg.nc; do
-        # Renaming dimension 'valid_time' to 'time' in $file
-        ncrename -d valid_time,time "$file"
+        # # Renaming dimension 'valid_time' to 'time' in $file
+        # ncrename -d valid_time,time "$file"
 
         # Renaming variable 'valid_time' to 'time' in $file
         ncrename -v valid_time,time "$file"
@@ -115,27 +117,48 @@ do
       cdo griddes ${domainfile} > ${griddesfile}
     fi
 
-
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-instant.nc ${tmpdir}/rmp_era5_${year}_${month}_ins.nc
     cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/data_stream-oper_stepType-avg.nc ${tmpdir}/rmp_era5_${year}_${month}_avg.nc
-    cdo -P ${ompthd} remap,${griddesfile},${wgtmeteo} ${pathdata}/meteocloud_${year}_${month}.nc ${tmpdir}/rmp_meteocloud_${year}_${month}.nc
+    if $lmeteo; then
+      cdo -P ${ompthd} remap,${griddesfile},${wgtmeteo} ${pathdata}/meteocloud_${year}_${month}.nc ${tmpdir}/rmp_meteocloud_${year}_${month}.nc
+    fi
   fi
 
   if $lmerge; then
 
-    cdo -P ${ompthd} expr,'WIND=sqrt(u^2+v^2)' ${tmpdir}/rmp_meteocloud_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp.nc
+    if $lmeteo; then
+      cdo -P ${ompthd} expr,'WIND=sqrt(u^2+v^2)' ${tmpdir}/rmp_meteocloud_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp.nc
+    else
+      cdo -P ${ompthd} expr,'WIND=sqrt(u10^2+v10^2)' ${tmpdir}/rmp_era5_${year}_${month}_ins.nc ${tmpdir}/${year}_${month}_temp.nc # Calculate WIND from u10 and v10
+    fi
     cdo -f nc4c const,10,${tmpdir}/rmp_era5_${year}_${month}_avg.nc ${tmpdir}/${year}_${month}_const.nc
     ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}_avg.nc ${tmpdir}/${year}_${month}_temp2.nc
     ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}_ins.nc ${tmpdir}/${year}_${month}_temp7.nc
-    cdo selvar,t,q ${tmpdir}/rmp_meteocloud_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp3.nc
+    if $lmeteo; then
+      cdo selvar,t,q ${tmpdir}/rmp_meteocloud_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp3.nc
+    fi
 
-    cdo merge ${tmpdir}/${year}_${month}_const.nc ${tmpdir}/${year}_${month}_temp3.nc ${tmpdir}/${year}_${month}_temp2.nc \
-              ${tmpdir}/${year}_${month}_temp.nc ${tmpdir}/${year}_${month}_temp7.nc ${tmpdir}/${year}_${month}_temp4.nc
+    if $lmeteo; then
+      cdo merge ${tmpdir}/${year}_${month}_const.nc ${tmpdir}/${year}_${month}_temp3.nc ${tmpdir}/${year}_${month}_temp2.nc \
+          ${tmpdir}/${year}_${month}_temp.nc ${tmpdir}/${year}_${month}_temp7.nc ${tmpdir}/${year}_${month}_temp4.nc
+    else
+      cdo merge ${tmpdir}/${year}_${month}_const.nc ${tmpdir}/${year}_${month}_temp2.nc \
+          ${tmpdir}/${year}_${month}_temp.nc ${tmpdir}/${year}_${month}_temp7.nc ${tmpdir}/${year}_${month}_temp4.nc
+    fi
 
     ncks -C -x -v hyai,hyam,hybi,hybm ${tmpdir}/${year}_${month}_temp4.nc ${tmpdir}/${year}_${month}_temp5.nc
-    ncwa -O -a lev ${tmpdir}/${year}_${month}_temp5.nc ${year}-${month}.nc
+    if $lmeteo; then
+      ncwa -O -a lev ${tmpdir}/${year}_${month}_temp5.nc ${year}-${month}.nc
+    else
+       # Simply copy the file
+      cp ${tmpdir}/${year}_${month}_temp5.nc  ${year}-${month}.nc
+    fi
 
-    ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t,TBOT -v q,QBOT ${year}-${month}.nc
+    if $lmeteo; then
+      ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t,TBOT -v q,QBOT ${year}-${month}.nc
+    else
+      ncrename -v sp,PSRF -v avg_sdswrf,FSDS -v avg_sdlwrf,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${year}-${month}.nc
+    fi
 #    ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${year}_${month}.nc
     ncatted -O -a units,ZBOT,m,c,"m" ${year}-${month}.nc
 
