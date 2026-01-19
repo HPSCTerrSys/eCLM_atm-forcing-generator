@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 """
-Convert SEAS5 constant and daily variables to 6-hourly resolution and merge
-with existing 6-hourly file.
+Convert SEAS5 constant, daily, and 6-hourly variables to a target time resolution.
 
 This script:
-1. Adds constant `z` (orography) to the 6-hourly file, broadcast to all time steps
-2. Converts daily `tp` (total precipitation) to 6-hourly by dividing by 4
-3. Converts daily `strd` (thermal radiation) to 6-hourly:
-   - Divided by 4 and distributed equally to all four 6-hour intervals
-   - Thermal radiation occurs continuously, day and night
-4. Converts daily `ssrd` (solar radiation) to 6-hourly:
-   - Zero in first/last 6-hour intervals ("night")
-   - Half the daily value in the middle two intervals ("day")
+1. Adds constant `z` (orography) broadcast to all time steps
+2. Expands 6-hourly variables (msl, u10, v10, t2m, d2m) to target frequency
+3. Converts daily `tp` (total precipitation) by dividing equally across intervals
+4. Converts daily `strd` (thermal radiation) to flux, distributed equally
+5. Converts daily `ssrd` (solar radiation) to flux with bell-shaped diurnal cycle
+   (cosine distribution: zero at 6:00 and 18:00, peak at noon)
 
 Usage:
-    python seas5_daily_to_6hourly.py --const <const_file> --daily <daily_file> --hourly <6h_file> [--output <output_file>]
+    python seas5_daily_to_6hourly.py --const <const_file> --daily <daily_file> \\
+        --hourly <6h_file> [--output <output_file>] [--frequency <hours>]
 
-If --output is not specified, the 6-hourly file will be modified in place.
+If --output is not specified, the output file will be named based on frequency.
 """
 
 import argparse
@@ -59,112 +57,138 @@ def forecast_period_to_hours(forecast_period):
         return values.astype(float)
 
 
-def expand_constant_to_6hourly(ds_const, n_timesteps):
+def generate_target_forecast_periods(input_periods_hours, frequency_hours):
     """
-    Expand constant variable z to 6-hourly resolution.
-
-    The constant z has forecast_period=0 (single time), we need to broadcast
-    it to all 6-hourly time steps.
+    Generate target forecast periods at the desired frequency.
 
     Parameters
     ----------
-    ds_const : xarray.Dataset
-        Dataset containing constant variables (z)
-    n_timesteps : int
-        Number of 6-hourly time steps to expand to
+    input_periods_hours : np.ndarray
+        Input forecast periods in hours (e.g., [6, 12, 18, 24, 30, 36, 42, 48])
+    frequency_hours : int
+        Target frequency in hours (e.g., 1 for hourly)
 
     Returns
     -------
-    xarray.DataArray
-        z variable expanded to n_timesteps
+    np.ndarray
+        Target forecast periods in hours
     """
-    z = ds_const["z"]
-
-    # Remove the forecast_period dimension (size 1) and we'll broadcast later
-    z_squeezed = z.squeeze("forecast_period", drop=True)
-
-    # Expand along a new forecast_period dimension
-    z_expanded = z_squeezed.expand_dims("forecast_period", axis=2)
-    z_expanded = z_expanded.broadcast_to(
-        number=z_squeezed.sizes.get("number", z_squeezed.shape[0]),
-        forecast_reference_time=z_squeezed.sizes.get("forecast_reference_time", 1),
-        forecast_period=n_timesteps,
-        latitude=z_squeezed.sizes.get("latitude", 1),
-        longitude=z_squeezed.sizes.get("longitude", 1),
-    )
-
-    return z_expanded
+    start_hour = frequency_hours  # First period (e.g., 1 for hourly, 6 for 6-hourly)
+    end_hour = int(np.max(input_periods_hours))
+    return np.arange(start_hour, end_hour + frequency_hours, frequency_hours, dtype=float)
 
 
-def distribute_daily_precip_to_6hourly(ds_daily, forecast_periods_6h):
+def expand_6hourly_to_target(ds_6h, var_name, target_periods_hours, frequency_hours):
     """
-    Distribute daily total precipitation to 6-hourly intervals.
+    Expand a 6-hourly variable to target frequency by repeating values.
 
-    Each daily value is divided by 4 and assigned to the four corresponding
-    6-hour intervals.
+    Each 6-hourly value is assigned to all sub-intervals within that 6-hour window.
+    For example, with hourly output, the value at hour 6 is assigned to hours 1-6.
+
+    Parameters
+    ----------
+    ds_6h : xarray.Dataset
+        Dataset containing 6-hourly variables
+    var_name : str
+        Variable name to expand
+    target_periods_hours : np.ndarray
+        Target forecast periods in hours
+    frequency_hours : int
+        Target frequency in hours
+
+    Returns
+    -------
+    np.ndarray
+        Variable data at target frequency
+    """
+    var_data = ds_6h[var_name]
+    input_periods_hours = forecast_period_to_hours(ds_6h["forecast_period"].values)
+
+    # Get dimensions
+    n_number = var_data.sizes.get("number", var_data.shape[0])
+    n_ref_time = var_data.sizes.get("forecast_reference_time", 1)
+    n_lat = var_data.sizes.get("latitude", 1)
+    n_lon = var_data.sizes.get("longitude", 1)
+    n_target = len(target_periods_hours)
+
+    # Create output array
+    output = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
+
+    # For each target period, find the corresponding 6-hourly period
+    for i, target_hour in enumerate(target_periods_hours):
+        # Find the 6-hourly period that contains this target hour
+        # Hour 1-6 -> 6h period at hour 6, Hour 7-12 -> 6h period at hour 12, etc.
+        containing_6h = int(np.ceil(target_hour / 6.0) * 6)
+        idx_6h = np.where(np.isclose(input_periods_hours, containing_6h))[0]
+        if len(idx_6h) > 0:
+            output[:, :, i, :, :] = var_data.isel(forecast_period=idx_6h[0]).values
+
+    return output
+
+
+def distribute_daily_to_target(ds_daily, var_name, target_periods_hours, frequency_hours):
+    """
+    Distribute daily accumulated variable to target frequency intervals.
+
+    Each daily value is divided equally among all intervals within that day.
 
     Parameters
     ----------
     ds_daily : xarray.Dataset
         Dataset containing daily variables
-    forecast_periods_6h : array-like
-        The 6-hourly forecast periods (e.g., [6, 12, 18, 24, 30, 36, 42, 48] in hours)
+    var_name : str
+        Variable name (e.g., 'tp')
+    target_periods_hours : np.ndarray
+        Target forecast periods in hours
+    frequency_hours : int
+        Target frequency in hours
 
     Returns
     -------
-    xarray.DataArray
-        tp variable at 6-hourly resolution
+    np.ndarray
+        Variable data at target frequency
     """
-    tp_daily = ds_daily["tp"]
-    daily_periods_raw = ds_daily["forecast_period"].values
-
-    # Convert to hours
-    forecast_periods_6h_hours = forecast_period_to_hours(forecast_periods_6h)
-    daily_periods_hours = forecast_period_to_hours(daily_periods_raw)
+    var_daily = ds_daily[var_name]
+    daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
 
     # Get dimensions
-    n_number = tp_daily.sizes.get("number", tp_daily.shape[0])
-    n_ref_time = tp_daily.sizes.get("forecast_reference_time", 1)
-    n_lat = tp_daily.sizes.get("latitude", 1)
-    n_lon = tp_daily.sizes.get("longitude", 1)
-    n_6h = len(forecast_periods_6h)
+    n_number = var_daily.sizes.get("number", var_daily.shape[0])
+    n_ref_time = var_daily.sizes.get("forecast_reference_time", 1)
+    n_lat = var_daily.sizes.get("latitude", 1)
+    n_lon = var_daily.sizes.get("longitude", 1)
+    n_target = len(target_periods_hours)
+
+    # Number of intervals per day
+    intervals_per_day = int(24 / frequency_hours)
 
     # Create output array
-    tp_6h = np.zeros((n_number, n_ref_time, n_6h, n_lat, n_lon), dtype=np.float32)
+    output = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
 
-    # For each daily period, distribute to 4 6-hourly periods
+    # For each daily period, distribute to target intervals
     for i, daily_period_hours in enumerate(daily_periods_hours):
-        # Find the 4 6-hourly periods that belong to this day
-        # Day ending at hour 24 -> 6h intervals at 6, 12, 18, 24
-        # Day ending at hour 48 -> 6h intervals at 30, 36, 42, 48
-        start_hour = daily_period_hours - 24 + 6  # first 6h period of this day
+        # Find target intervals belonging to this day
+        day_start = daily_period_hours - 24 + frequency_hours
+        day_end = daily_period_hours
 
-        # Get indices of the 4 6-hourly periods for this day
-        indices_6h = []
-        for h in range(4):
-            hour = start_hour + h * 6
-            idx = np.where(np.isclose(forecast_periods_6h_hours, hour))[0]
-            if len(idx) > 0:
-                indices_6h.append(idx[0])
+        indices = []
+        for j, target_hour in enumerate(target_periods_hours):
+            if day_start <= target_hour <= day_end:
+                indices.append(j)
 
-        # Divide daily value by 4 and assign to each 6-hourly period
-        daily_value = tp_daily.isel(forecast_period=i).values
-        for idx in indices_6h:
-            tp_6h[:, :, idx, :, :] = daily_value / 4.0
+        if len(indices) > 0:
+            # Divide daily value by number of intervals
+            daily_value = var_daily.isel(forecast_period=i).values
+            for idx in indices:
+                output[:, :, idx, :, :] = daily_value / len(indices)
 
-    return tp_6h
+    return output
 
 
-def distribute_daily_thermal_radiation_to_6hourly_flux(ds_daily, var_name, forecast_periods_6h):
+def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hours, frequency_hours):
     """
-    Distribute daily thermal radiation to 6-hourly intervals and convert to flux.
+    Distribute daily thermal radiation to target frequency and convert to flux.
 
-    For thermal/longwave radiation (strd):
-    - Divide daily value by 4 and distribute evenly to all 4 intervals
-    - Thermal radiation occurs continuously, day and night
-
-    The daily accumulated radiation (J/m²) is converted to flux (W/m²) by
-    dividing by the time interval (6 hours = 21600 seconds).
+    Thermal radiation is distributed evenly across all intervals (day and night).
 
     Parameters
     ----------
@@ -172,80 +196,64 @@ def distribute_daily_thermal_radiation_to_6hourly_flux(ds_daily, var_name, forec
         Dataset containing daily variables
     var_name : str
         Variable name (typically 'strd')
-    forecast_periods_6h : array-like
-        The 6-hourly forecast periods
+    target_periods_hours : np.ndarray
+        Target forecast periods in hours
+    frequency_hours : int
+        Target frequency in hours
 
     Returns
     -------
     np.ndarray
-        Radiation flux (W/m²) at 6-hourly resolution
+        Radiation flux (W/m²) at target frequency
     """
     rad_daily = ds_daily[var_name]
-    daily_periods_raw = ds_daily["forecast_period"].values
-
-    # Convert to hours
-    forecast_periods_6h_hours = forecast_period_to_hours(forecast_periods_6h)
-    daily_periods_hours = forecast_period_to_hours(daily_periods_raw)
+    daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
 
     # Get dimensions
     n_number = rad_daily.sizes.get("number", rad_daily.shape[0])
     n_ref_time = rad_daily.sizes.get("forecast_reference_time", 1)
     n_lat = rad_daily.sizes.get("latitude", 1)
     n_lon = rad_daily.sizes.get("longitude", 1)
-    n_6h = len(forecast_periods_6h)
+    n_target = len(target_periods_hours)
 
-    # Time interval in seconds (6 hours)
-    dt_seconds = 6 * 3600  # 21600 seconds
+    # Time interval in seconds
+    dt_seconds = frequency_hours * 3600
+
+    # Number of intervals per day
+    intervals_per_day = int(24 / frequency_hours)
 
     # Create output array
-    flux_6h = np.zeros((n_number, n_ref_time, n_6h, n_lat, n_lon), dtype=np.float32)
+    flux = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
 
-    # For each daily period, distribute to 4 6-hourly periods
+    # For each daily period, distribute to target intervals
     for i, daily_period_hours in enumerate(daily_periods_hours):
-        # Find the 4 6-hourly periods that belong to this day
-        start_hour = daily_period_hours - 24 + 6
+        day_start = daily_period_hours - 24 + frequency_hours
+        day_end = daily_period_hours
 
-        # Get indices of the 4 6-hourly periods for this day
-        hours_6h = [start_hour + h * 6 for h in range(4)]
-        indices_6h = []
-        for hour in hours_6h:
-            idx = np.where(np.isclose(forecast_periods_6h_hours, hour))[0]
-            if len(idx) > 0:
-                indices_6h.append(idx[0])
+        indices = []
+        for j, target_hour in enumerate(target_periods_hours):
+            if day_start <= target_hour <= day_end:
+                indices.append(j)
 
-        if len(indices_6h) != 4:
-            print(
-                f"Warning: Expected 4 6-hourly indices for day {daily_period_hours}h, "
-                + f"got {len(indices_6h)}"
-            )
-            continue
+        if len(indices) > 0:
+            # Daily accumulated value (J/m²)
+            daily_value = rad_daily.isel(forecast_period=i).values
+            # Flux = (daily_value / n_intervals) / dt_seconds
+            flux_value = (daily_value / len(indices)) / dt_seconds
+            for idx in indices:
+                flux[:, :, idx, :, :] = flux_value
 
-        # Daily accumulated value (J/m²)
-        daily_value = rad_daily.isel(forecast_period=i).values
-
-        # Convert to flux (W/m²): energy per 6-hour interval / time in seconds
-        # Divide daily energy by 4 (one quarter per interval)
-        # Flux = (daily_value / 4) / dt_seconds
-        flux_value = (daily_value / 4.0) / dt_seconds
-
-        # Distribute equally to all 4 intervals
-        for idx in indices_6h:
-            flux_6h[:, :, idx, :, :] = flux_value
-
-    return flux_6h
+    return flux
 
 
-def distribute_daily_solar_radiation_to_6hourly_flux(ds_daily, var_name, forecast_periods_6h):
+def distribute_solar_radiation_to_flux(ds_daily, var_name, target_periods_hours, frequency_hours):
     """
-    Distribute daily solar radiation to 6-hourly intervals and convert to flux.
+    Distribute daily solar radiation with bell-shaped diurnal cycle.
 
-    For solar/shortwave radiation (ssrd):
-    - Zero in first 6-hour interval (night: 00-06)
-    - Half the daily value in middle two intervals (day: 06-12, 12-18)
-    - Zero in last 6-hour interval (night: 18-24)
-
-    The daily accumulated radiation (J/m²) is converted to flux (W/m²) by
-    dividing by the time interval (6 hours = 21600 seconds).
+    Uses a cosine distribution:
+    - Zero radiation between 18:00 and 06:00 (night)
+    - Bell-shaped curve between 06:00 and 18:00, peak at noon
+    - weight(h) = max(0, cos((h - 12) * π / 12))
 
     Parameters
     ----------
@@ -253,77 +261,70 @@ def distribute_daily_solar_radiation_to_6hourly_flux(ds_daily, var_name, forecas
         Dataset containing daily variables
     var_name : str
         Variable name (typically 'ssrd')
-    forecast_periods_6h : array-like
-        The 6-hourly forecast periods
+    target_periods_hours : np.ndarray
+        Target forecast periods in hours
+    frequency_hours : int
+        Target frequency in hours
 
     Returns
     -------
     np.ndarray
-        Radiation flux (W/m²) at 6-hourly resolution
+        Radiation flux (W/m²) at target frequency
     """
     rad_daily = ds_daily[var_name]
-    daily_periods_raw = ds_daily["forecast_period"].values
-
-    # Convert to hours
-    forecast_periods_6h_hours = forecast_period_to_hours(forecast_periods_6h)
-    daily_periods_hours = forecast_period_to_hours(daily_periods_raw)
+    daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
 
     # Get dimensions
     n_number = rad_daily.sizes.get("number", rad_daily.shape[0])
     n_ref_time = rad_daily.sizes.get("forecast_reference_time", 1)
     n_lat = rad_daily.sizes.get("latitude", 1)
     n_lon = rad_daily.sizes.get("longitude", 1)
-    n_6h = len(forecast_periods_6h)
+    n_target = len(target_periods_hours)
 
-    # Time interval in seconds (6 hours)
-    dt_seconds = 6 * 3600  # 21600 seconds
+    # Time interval in seconds
+    dt_seconds = frequency_hours * 3600
 
     # Create output array
-    flux_6h = np.zeros((n_number, n_ref_time, n_6h, n_lat, n_lon), dtype=np.float32)
+    flux = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
 
-    # For each daily period, distribute to 4 6-hourly periods
+    # For each daily period, distribute with bell-shaped weights
     for i, daily_period_hours in enumerate(daily_periods_hours):
-        # Find the 4 6-hourly periods that belong to this day
-        start_hour = daily_period_hours - 24 + 6
+        day_start = daily_period_hours - 24 + frequency_hours
+        day_end = daily_period_hours
 
-        # Get indices of the 4 6-hourly periods for this day
-        hours_6h = [start_hour + h * 6 for h in range(4)]
-        indices_6h = []
-        for hour in hours_6h:
-            idx = np.where(np.isclose(forecast_periods_6h_hours, hour))[0]
-            if len(idx) > 0:
-                indices_6h.append(idx[0])
+        # Find indices and calculate weights for this day
+        indices = []
+        weights = []
+        for j, target_hour in enumerate(target_periods_hours):
+            if day_start <= target_hour <= day_end:
+                indices.append(j)
+                # Hour of day (0-24) - use center of interval
+                hour_of_day = ((target_hour - frequency_hours / 2) % 24)
+                # Bell-shaped weight: cosine centered at noon
+                # cos((h - 12) * π / 12) gives 0 at h=6 and h=18, 1 at h=12
+                weight = max(0.0, np.cos((hour_of_day - 12) * np.pi / 12))
+                weights.append(weight)
 
-        if len(indices_6h) != 4:
-            print(
-                f"Warning: Expected 4 6-hourly indices for day {daily_period_hours}h, "
-                + f"got {len(indices_6h)}"
-            )
-            continue
+        if len(indices) > 0 and sum(weights) > 0:
+            # Normalize weights to sum to 1
+            weights = np.array(weights)
+            weights = weights / weights.sum()
 
-        # Daily accumulated value (J/m²)
-        daily_value = rad_daily.isel(forecast_period=i).values
+            # Daily accumulated value (J/m²)
+            daily_value = rad_daily.isel(forecast_period=i).values
 
-        # Convert to flux (W/m²): energy per 6-hour interval / time in seconds
-        # Half the daily energy goes to each of the two "day" intervals
-        # Flux = (daily_value / 2) / dt_seconds
-        flux_value = (daily_value / 2.0) / dt_seconds
+            # Distribute according to weights and convert to flux
+            for idx, weight in zip(indices, weights):
+                # Energy for this interval = daily_value * weight
+                # Flux = energy / dt_seconds
+                flux[:, :, idx, :, :] = (daily_value * weight) / dt_seconds
 
-        # First interval (night): 0
-        flux_6h[:, :, indices_6h[0], :, :] = 0.0
-        # Second interval (day): flux
-        flux_6h[:, :, indices_6h[1], :, :] = flux_value
-        # Third interval (day): flux
-        flux_6h[:, :, indices_6h[2], :, :] = flux_value
-        # Fourth interval (night): 0
-        flux_6h[:, :, indices_6h[3], :, :] = 0.0
-
-    return flux_6h
+    return flux
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert SEAS5 constant and daily variables to 6-hourly resolution"
+        description="Convert SEAS5 variables to target time resolution"
     )
     parser.add_argument(
         "--const", required=True, help="Path to netCDF file with constant variables (z)"
@@ -339,7 +340,14 @@ def main():
     parser.add_argument(
         "--output",
         default=None,
-        help="Output file path (default: modify hourly file in place)",
+        help="Output file path (default: auto-generated based on frequency)",
+    )
+    parser.add_argument(
+        "--frequency",
+        type=int,
+        default=6,
+        choices=[1, 2, 3, 6],
+        help="Target frequency in hours (default: 6). Must divide 24 evenly.",
     )
     parser.add_argument(
         "--dry-run",
@@ -349,9 +357,14 @@ def main():
 
     args = parser.parse_args()
 
-    # Determine output file early
-    output_file = args.output if args.output else args.hourly
-    in_place = output_file == args.hourly
+    frequency_hours = args.frequency
+
+    # Determine output file
+    if args.output:
+        output_file = args.output
+    else:
+        base = os.path.splitext(args.hourly)[0]
+        output_file = f"{base}_{frequency_hours}h.nc"
 
     # Check if output directory exists
     output_dir = os.path.dirname(output_file)
@@ -360,11 +373,10 @@ def main():
         print(f"Please create it with: mkdir -p {output_dir}")
         sys.exit(1)
 
-    if in_place:
-        print(f"Note: Modifying {args.hourly} in place")
+    print(f"Target frequency: {frequency_hours} hours")
+    print(f"Output file: {output_file}")
 
-    # Load datasets - use load() to ensure data is in memory
-    # This is important for in-place modification
+    # Load datasets
     print(f"Loading constant file: {args.const}")
     ds_const = xr.open_dataset(args.const).load()
 
@@ -374,114 +386,114 @@ def main():
     print(f"Loading 6-hourly file: {args.hourly}")
     ds_6h = xr.open_dataset(args.hourly).load()
 
-    # Get 6-hourly forecast periods
-    forecast_periods_6h = ds_6h["forecast_period"].values
-    n_timesteps = len(forecast_periods_6h)
+    # Get input periods and generate target periods
+    input_periods_hours = forecast_period_to_hours(ds_6h["forecast_period"].values)
+    target_periods_hours = generate_target_forecast_periods(input_periods_hours, frequency_hours)
+    n_target = len(target_periods_hours)
 
-    # Convert to hours for display
-    fp_6h_hours = forecast_period_to_hours(forecast_periods_6h)
-    fp_daily_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
+    daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
 
-    print(f"6-hourly forecast periods (hours): {fp_6h_hours}")
-    print(f"Daily forecast periods (hours): {fp_daily_hours}")
+    print(f"Input 6-hourly periods (hours): {input_periods_hours}")
+    print(f"Daily periods (hours): {daily_periods_hours}")
+    print(f"Target periods (hours): {target_periods_hours}")
 
-    # 1. Expand constant z to 6-hourly
-    print("Expanding constant z to 6-hourly resolution...")
+    # 1. Expand constant z
+    print("Expanding constant z...")
     z_const = ds_const["z"]
-
-    # Squeeze out the singleton forecast_period dimension from constant
     z_squeezed = z_const.squeeze("forecast_period", drop=True)
-
-    # Create z_6h by tiling the constant value
-    # Shape: (number, forecast_reference_time, forecast_period, latitude, longitude)
     z_data = np.tile(
-        z_squeezed.values[:, :, np.newaxis, :, :], (1, 1, n_timesteps, 1, 1)
+        z_squeezed.values[:, :, np.newaxis, :, :], (1, 1, n_target, 1, 1)
     )
 
-    # 2. Distribute daily precipitation to 6-hourly
-    print("Distributing daily precipitation to 6-hourly...")
-    tp_6h = distribute_daily_precip_to_6hourly(ds_daily, forecast_periods_6h)
+    # 2. Expand 6-hourly variables
+    vars_6h = ["msl", "u10", "v10", "t2m", "d2m"]
+    expanded_vars = {}
+    for var in vars_6h:
+        if var in ds_6h.data_vars:
+            print(f"Expanding {var} to {frequency_hours}-hourly...")
+            expanded_vars[var] = expand_6hourly_to_target(
+                ds_6h, var, target_periods_hours, frequency_hours
+            )
 
-    # 3. Distribute daily radiation to 6-hourly and convert to flux (W/m²)
-    print("Distributing daily strd (thermal radiation) to 6-hourly flux (flds)...")
-    flds_6h = distribute_daily_thermal_radiation_to_6hourly_flux(
-        ds_daily, "strd", forecast_periods_6h
+    # 3. Distribute daily precipitation
+    print("Distributing daily precipitation...")
+    tp_target = distribute_daily_to_target(
+        ds_daily, "tp", target_periods_hours, frequency_hours
     )
 
-    print("Distributing daily ssrd (solar radiation) to 6-hourly flux (fsds)...")
-    fsds_6h = distribute_daily_solar_radiation_to_6hourly_flux(
-        ds_daily, "ssrd", forecast_periods_6h
+    # 4. Distribute thermal radiation (evenly)
+    print("Distributing thermal radiation (flds)...")
+    flds_target = distribute_thermal_radiation_to_flux(
+        ds_daily, "strd", target_periods_hours, frequency_hours
     )
 
-    # Create new dataset with all variables
-    print("Creating merged dataset...")
-
-    # Copy the 6-hourly dataset structure
-    ds_out = ds_6h.copy(deep=True)
-
-    # Add z variable
-    ds_out["z"] = xr.DataArray(
-        data=z_data,
-        dims=[
-            "number",
-            "forecast_reference_time",
-            "forecast_period",
-            "latitude",
-            "longitude",
-        ],
-        attrs=z_const.attrs,
+    # 5. Distribute solar radiation (bell-shaped)
+    print("Distributing solar radiation with bell-shaped diurnal cycle (fsds)...")
+    fsds_target = distribute_solar_radiation_to_flux(
+        ds_daily, "ssrd", target_periods_hours, frequency_hours
     )
 
-    # Add tp variable
-    ds_out["tp"] = xr.DataArray(
-        data=tp_6h,
-        dims=[
-            "number",
-            "forecast_reference_time",
-            "forecast_period",
-            "latitude",
-            "longitude",
-        ],
-        attrs=ds_daily["tp"].attrs,
+    # Create output dataset
+    print("Creating output dataset...")
+
+    dims = ["number", "forecast_reference_time", "forecast_period", "latitude", "longitude"]
+
+    # Start with coordinates
+    ds_out = xr.Dataset(
+        coords={
+            "number": ds_6h["number"],
+            "forecast_reference_time": ds_6h["forecast_reference_time"],
+            "forecast_period": target_periods_hours,
+            "latitude": ds_6h["latitude"],
+            "longitude": ds_6h["longitude"],
+        }
     )
 
-    # Add flds variable (thermal radiation flux, converted from strd)
+    # Copy coordinate attributes
+    ds_out["forecast_period"].attrs = {
+        "long_name": "time since forecast_reference_time",
+        "standard_name": "forecast_period",
+        "units": "hours",
+    }
+
+    # Add z
+    ds_out["z"] = xr.DataArray(data=z_data, dims=dims, attrs=z_const.attrs)
+
+    # Add expanded 6-hourly variables
+    for var, data in expanded_vars.items():
+        ds_out[var] = xr.DataArray(data=data, dims=dims, attrs=ds_6h[var].attrs)
+
+    # Add precipitation
+    ds_out["tp"] = xr.DataArray(data=tp_target, dims=dims, attrs=ds_daily["tp"].attrs)
+
+    # Add radiation fluxes
     ds_out["flds"] = xr.DataArray(
-        data=flds_6h,
-        dims=[
-            "number",
-            "forecast_reference_time",
-            "forecast_period",
-            "latitude",
-            "longitude",
-        ],
+        data=flds_target,
+        dims=dims,
         attrs={
             "units": "W m-2",
             "long_name": "Downward longwave radiation at surface",
             "standard_name": "surface_downwelling_longwave_flux_in_air",
-            "description": "Converted from daily accumulated strd by dividing by 4 and distributing equally to all 6-hourly intervals",
+            "description": f"Converted from daily strd, distributed equally to {frequency_hours}-hourly intervals",
         },
     )
 
-    # Add fsds variable (solar radiation flux, converted from ssrd)
     ds_out["fsds"] = xr.DataArray(
-        data=fsds_6h,
-        dims=[
-            "number",
-            "forecast_reference_time",
-            "forecast_period",
-            "latitude",
-            "longitude",
-        ],
+        data=fsds_target,
+        dims=dims,
         attrs={
             "units": "W m-2",
             "long_name": "Downward shortwave radiation at surface",
             "standard_name": "surface_downwelling_shortwave_flux_in_air",
-            "description": "Converted from daily accumulated ssrd by distributing to 6-hourly intervals and dividing by time",
+            "description": f"Converted from daily ssrd with bell-shaped diurnal cycle (cosine, peak at noon)",
         },
     )
 
-    # Write output (unless dry-run)
+    # Copy global attributes
+    ds_out.attrs = ds_6h.attrs.copy()
+    ds_out.attrs["frequency"] = f"{frequency_hours} hours"
+
+    # Write output
     if args.dry_run:
         print(f"\n[DRY RUN] Would write output to: {output_file}")
         print("[DRY RUN] Output dataset structure:")
@@ -489,58 +501,32 @@ def main():
     else:
         print(f"Writing output to: {output_file}")
 
-        # Build encoding dict preserving original encodings where possible
-        encoding = {}
-
-        # Valid encoding parameters for netCDF4 backend
+        # Build encoding
         valid_encodings = {
-            "compression",
-            "dtype",
-            "least_significant_digit",
-            "zlib",
-            "_FillValue",
-            "fletcher32",
-            "complevel",
-            "chunksizes",
-            "shuffle",
-            "contiguous",
-            "calendar",
-            "units",
+            "compression", "dtype", "least_significant_digit", "zlib",
+            "_FillValue", "fletcher32", "complevel", "chunksizes",
+            "shuffle", "contiguous", "calendar", "units",
         }
 
         def filter_encoding(enc):
-            """Filter encoding dict to only valid netCDF4 parameters."""
             return {k: v for k, v in enc.items() if k in valid_encodings}
 
-        # Preserve encoding for all coordinates from the 6-hourly file
-        for coord in ds_6h.coords:
-            if ds_6h[coord].encoding:
-                encoding[coord] = filter_encoding(ds_6h[coord].encoding)
+        encoding = {}
 
-        # Preserve encoding for existing data variables from the 6-hourly file
-        for var in ds_6h.data_vars:
-            if var in ds_out.data_vars and ds_6h[var].encoding:
-                encoding[var] = filter_encoding(ds_6h[var].encoding)
-                # Ensure compression is enabled
-                encoding[var].setdefault("zlib", True)
-                encoding[var].setdefault("complevel", 4)
+        # Default encoding for all data variables
+        for var in ds_out.data_vars:
+            encoding[var] = {"zlib": True, "complevel": 4, "dtype": "float32"}
 
-        # Preserve encoding for z from constant file
-        if "z" in ds_out.data_vars and ds_const["z"].encoding:
-            encoding["z"] = filter_encoding(ds_const["z"].encoding)
-            encoding["z"].setdefault("zlib", True)
-            encoding["z"].setdefault("complevel", 4)
+        # Preserve encoding from source files where applicable
+        for var in vars_6h:
+            if var in ds_6h.data_vars and ds_6h[var].encoding:
+                encoding[var].update(filter_encoding(ds_6h[var].encoding))
 
-        # Preserve encoding for tp from daily file
-        if "tp" in ds_out.data_vars and ds_daily["tp"].encoding:
-            encoding["tp"] = filter_encoding(ds_daily["tp"].encoding)
-            encoding["tp"].setdefault("zlib", True)
-            encoding["tp"].setdefault("complevel", 4)
+        if ds_const["z"].encoding:
+            encoding["z"].update(filter_encoding(ds_const["z"].encoding))
 
-        # For flds/fsds (derived from strd/ssrd), use compression with float32
-        for var in ("flds", "fsds"):
-            if var in ds_out.data_vars and var not in encoding:
-                encoding[var] = {"zlib": True, "complevel": 4, "dtype": "float32"}
+        if ds_daily["tp"].encoding:
+            encoding["tp"].update(filter_encoding(ds_daily["tp"].encoding))
 
         ds_out.to_netcdf(output_file, encoding=encoding)
 
@@ -552,17 +538,14 @@ def main():
     print("Done!")
 
     # Print summary
-    print("\nSummary of added variables:")
-    print(f"  z: constant orography, broadcast to {n_timesteps} time steps")
-    print("  tp: daily precipitation divided by 4 for each 6-hourly interval")
-    print(
-        "  flds: thermal radiation flux (W/m²) - "
-        + "divided by 4, distributed equally to all intervals (converted from strd)"
-    )
-    print(
-        "  fsds: solar radiation flux (W/m²) - "
-        + "0 at night, flux at day (converted from ssrd)"
-    )
+    print(f"\nSummary (target frequency: {frequency_hours} hours):")
+    print(f"  z: constant orography, broadcast to {n_target} time steps")
+    for var in vars_6h:
+        if var in expanded_vars:
+            print(f"  {var}: expanded from 6-hourly by value repetition")
+    print(f"  tp: daily precipitation distributed equally")
+    print(f"  flds: thermal radiation flux - distributed equally (day and night)")
+    print(f"  fsds: solar radiation flux - bell-shaped (cosine, 6-18h, peak at noon)")
 
 
 if __name__ == "__main__":
