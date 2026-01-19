@@ -464,14 +464,14 @@ def main():
         ref_time_seconds = (ref_time - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
     else:
         ref_time_seconds = float(ref_time)
-    valid_time_seconds = ref_time_seconds + target_periods_hours * 3600
+    valid_time_seconds = (ref_time_seconds + target_periods_hours * 3600).astype(np.int64)
     ds_out["valid_time"] = xr.DataArray(
         data=valid_time_seconds,
         dims=["forecast_period"],
         attrs={
             "standard_name": "time",
             "long_name": "time",
-            "units": "seconds since 1970-01-01T00:00:00",
+            "units": "seconds since 1970-01-01",
             "calendar": "proleptic_gregorian",
         },
     )
@@ -547,6 +547,9 @@ def main():
 
         if ds_daily["tp"].encoding:
             encoding["tp"].update(filter_encoding(ds_daily["tp"].encoding))
+
+        # valid_time should be int64, not float
+        encoding["valid_time"] = {"dtype": "int64"}
 
         ds_out.to_netcdf(output_file, encoding=encoding)
 
