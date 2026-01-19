@@ -565,8 +565,8 @@ def main():
             encoding["tp"].update(filter_encoding(ds_daily["tp"].encoding))
 
         # valid_time should be int64, time should be int32
-        encoding["valid_time"] = {"dtype": "int64"}
-        encoding["time"] = {"dtype": "int32"}
+        # encoding["valid_time"] = {"dtype": "int64"}
+        encoding["valid_time"] = {"dtype": "int32"}
 
         ds_out.to_netcdf(output_file, encoding=encoding)
 
