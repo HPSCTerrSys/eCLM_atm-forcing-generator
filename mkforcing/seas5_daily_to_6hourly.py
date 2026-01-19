@@ -57,7 +57,7 @@ def forecast_period_to_hours(forecast_period):
         return values.astype(float)
 
 
-def generate_target_forecast_periods(input_periods_hours, frequency_hours):
+def generate_target_forecast_periods(input_periods_hours, frequency_hours, include_hour_zero=False):
     """
     Generate target forecast periods at the desired frequency.
 
@@ -67,13 +67,15 @@ def generate_target_forecast_periods(input_periods_hours, frequency_hours):
         Input forecast periods in hours (e.g., [6, 12, 18, 24, 30, 36, 42, 48])
     frequency_hours : int
         Target frequency in hours (e.g., 1 for hourly)
+    include_hour_zero : bool
+        If True, include hour 0 as the first time step (for initial conditions)
 
     Returns
     -------
     np.ndarray
         Target forecast periods in hours
     """
-    start_hour = frequency_hours  # First period (e.g., 1 for hourly, 6 for 6-hourly)
+    start_hour = 0 if include_hour_zero else frequency_hours
     end_hour = int(np.max(input_periods_hours))
     return np.arange(start_hour, end_hour + frequency_hours, frequency_hours, dtype=float)
 
@@ -117,8 +119,10 @@ def expand_6hourly_to_target(ds_6h, var_name, target_periods_hours, frequency_ho
     # For each target period, find the corresponding 6-hourly period
     for i, target_hour in enumerate(target_periods_hours):
         # Find the 6-hourly period that contains this target hour
-        # Hour 1-6 -> 6h period at hour 6, Hour 7-12 -> 6h period at hour 12, etc.
+        # Hour 0-6 -> 6h period at hour 6, Hour 7-12 -> 6h period at hour 12, etc.
         containing_6h = int(np.ceil(target_hour / 6.0) * 6)
+        if containing_6h == 0:
+            containing_6h = 6  # Hour 0 uses the first available value (hour 6)
         idx_6h = np.where(np.isclose(input_periods_hours, containing_6h))[0]
         if len(idx_6h) > 0:
             output[:, :, i, :, :] = var_data.isel(forecast_period=idx_6h[0]).values
@@ -167,7 +171,10 @@ def distribute_daily_to_target(ds_daily, var_name, target_periods_hours, frequen
     # For each daily period, distribute to target intervals
     for i, daily_period_hours in enumerate(daily_periods_hours):
         # Find target intervals belonging to this day
-        day_start = daily_period_hours - 24 + frequency_hours
+        # For first day, include hour 0 if present
+        day_start = daily_period_hours - 24
+        if i > 0:
+            day_start += frequency_hours  # Avoid overlap with previous day
         day_end = daily_period_hours
 
         indices = []
@@ -227,7 +234,10 @@ def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hour
 
     # For each daily period, distribute to target intervals
     for i, daily_period_hours in enumerate(daily_periods_hours):
-        day_start = daily_period_hours - 24 + frequency_hours
+        # For first day, include hour 0 if present
+        day_start = daily_period_hours - 24
+        if i > 0:
+            day_start += frequency_hours  # Avoid overlap with previous day
         day_end = daily_period_hours
 
         indices = []
@@ -289,7 +299,10 @@ def distribute_solar_radiation_to_flux(ds_daily, var_name, target_periods_hours,
 
     # For each daily period, distribute with bell-shaped weights
     for i, daily_period_hours in enumerate(daily_periods_hours):
-        day_start = daily_period_hours - 24 + frequency_hours
+        # For first day, include hour 0 if present
+        day_start = daily_period_hours - 24
+        if i > 0:
+            day_start += frequency_hours  # Avoid overlap with previous day
         day_end = daily_period_hours
 
         # Find indices and calculate weights for this day
@@ -354,6 +367,11 @@ def main():
         action="store_true",
         help="Print what would be done without writing output",
     )
+    parser.add_argument(
+        "--include-hour-zero",
+        action="store_true",
+        help="Include hour 0 as initial time step (duplicates first available value)",
+    )
 
     args = parser.parse_args()
 
@@ -388,7 +406,9 @@ def main():
 
     # Get input periods and generate target periods
     input_periods_hours = forecast_period_to_hours(ds_6h["forecast_period"].values)
-    target_periods_hours = generate_target_forecast_periods(input_periods_hours, frequency_hours)
+    target_periods_hours = generate_target_forecast_periods(
+        input_periods_hours, frequency_hours, args.include_hour_zero
+    )
     n_target = len(target_periods_hours)
 
     daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
