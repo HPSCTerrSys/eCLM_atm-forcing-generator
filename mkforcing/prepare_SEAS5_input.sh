@@ -76,9 +76,11 @@ do
     cp ${pathdata}/download_era5_${year}_${month}.nc ${tmpdir}
 
     # Extract the first ensemble member
+    # TODO: Preparation of all 51 ensemble members
     ncks --overwrite -d number,0 -O ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
     # Remove number and forecast_reference_time dimensions
     ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
+    ncwa --overwrite -a number ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
 
     # Renaming variable 'valid_time' to 'time' in $file
     ncrename -v valid_time,time ${tmpdir}/download_era5_${year}_${month}.nc
