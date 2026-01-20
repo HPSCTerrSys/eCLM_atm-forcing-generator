@@ -193,15 +193,17 @@ def distribute_daily_to_target(ds_daily, var_name, target_periods_hours, frequen
 
 def distribute_precipitation_to_flux(ds_daily, var_name, target_periods_hours, frequency_hours):
     """
-    Distribute daily accumulated precipitation to target frequency and convert to flux.
+    Distribute daily precipitation to target frequency and convert to flux.
 
-    Precipitation is distributed evenly across all intervals.
+    The input data is accumulated since forecast start, so we first de-accumulate
+    by taking differences (day[i] - day[i-1]). The first day uses its value directly.
+    The de-accumulated daily values are then distributed evenly across all intervals.
     Converts from meters [m] to precipitation rate [kg m**-2 s**-1] (= mm/s).
 
     Parameters
     ----------
     ds_daily : xarray.Dataset
-        Dataset containing daily variables
+        Dataset containing daily variables (accumulated since forecast start)
     var_name : str
         Variable name (typically 'tp')
     target_periods_hours : np.ndarray
@@ -244,8 +246,18 @@ def distribute_precipitation_to_flux(ds_daily, var_name, target_periods_hours, f
                 indices.append(j)
 
         if len(indices) > 0:
-            # Daily accumulated value in meters [m]
-            daily_value = precip_daily.isel(forecast_period=i).values
+            # Daily value in meters [m]
+            # De-accumulate: get actual daily value from accumulated values
+            # Input is accumulated since forecast start
+            accumulated_value = precip_daily.isel(forecast_period=i).values
+            if i == 0:
+                # First day: use accumulated value directly
+                daily_value = accumulated_value
+            else:
+                # Subsequent days: take difference with previous day
+                previous_accumulated = precip_daily.isel(forecast_period=i - 1).values
+                daily_value = accumulated_value - previous_accumulated
+
             # Convert: m -> mm (×1000), then divide by interval seconds to get rate
             # flux [kg m**-2 s**-1] = (daily_value [m] × 1000) / (n_intervals × dt_seconds)
             flux_value = (daily_value * 1000) / (len(indices) * dt_seconds)
