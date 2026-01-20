@@ -271,12 +271,14 @@ def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hour
     """
     Distribute daily thermal radiation to target frequency and convert to flux.
 
+    The input data is accumulated since forecast start, so we first de-accumulate
+    by taking differences (day[i] - day[i-1]). The first day uses its value directly.
     Thermal radiation is distributed evenly across all intervals (day and night).
 
     Parameters
     ----------
     ds_daily : xarray.Dataset
-        Dataset containing daily variables
+        Dataset containing daily variables (accumulated since forecast start)
     var_name : str
         Variable name (typically 'strd')
     target_periods_hours : np.ndarray
@@ -302,9 +304,6 @@ def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hour
     # Time interval in seconds
     dt_seconds = frequency_hours * 3600
 
-    # Number of intervals per day
-    intervals_per_day = int(24 / frequency_hours)
-
     # Create output array
     flux = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
 
@@ -322,8 +321,17 @@ def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hour
                 indices.append(j)
 
         if len(indices) > 0:
-            # Daily accumulated value (J/m²)
-            daily_value = rad_daily.isel(forecast_period=i).values
+            # De-accumulate: get actual daily value from accumulated values
+            # Input is accumulated since forecast start (J/m²)
+            accumulated_value = rad_daily.isel(forecast_period=i).values
+            if i == 0:
+                # First day: use accumulated value directly
+                daily_value = accumulated_value
+            else:
+                # Subsequent days: take difference with previous day
+                previous_accumulated = rad_daily.isel(forecast_period=i - 1).values
+                daily_value = accumulated_value - previous_accumulated
+
             # Flux = (daily_value / n_intervals) / dt_seconds
             flux_value = (daily_value / len(indices)) / dt_seconds
             for idx in indices:
@@ -336,6 +344,9 @@ def distribute_solar_radiation_to_flux(ds_daily, var_name, target_periods_hours,
     """
     Distribute daily solar radiation with bell-shaped diurnal cycle.
 
+    The input data is accumulated since forecast start, so we first de-accumulate
+    by taking differences (day[i] - day[i-1]). The first day uses its value directly.
+
     Uses a cosine distribution:
     - Zero radiation between 18:00 and 06:00 (night)
     - Bell-shaped curve between 06:00 and 18:00, peak at noon
@@ -344,7 +355,7 @@ def distribute_solar_radiation_to_flux(ds_daily, var_name, target_periods_hours,
     Parameters
     ----------
     ds_daily : xarray.Dataset
-        Dataset containing daily variables
+        Dataset containing daily variables (accumulated since forecast start)
     var_name : str
         Variable name (typically 'ssrd')
     target_periods_hours : np.ndarray
@@ -399,8 +410,16 @@ def distribute_solar_radiation_to_flux(ds_daily, var_name, target_periods_hours,
             weights = np.array(weights)
             weights = weights / weights.sum()
 
-            # Daily accumulated value (J/m²)
-            daily_value = rad_daily.isel(forecast_period=i).values
+            # De-accumulate: get actual daily value from accumulated values
+            # Input is accumulated since forecast start (J/m²)
+            accumulated_value = rad_daily.isel(forecast_period=i).values
+            if i == 0:
+                # First day: use accumulated value directly
+                daily_value = accumulated_value
+            else:
+                # Subsequent days: take difference with previous day
+                previous_accumulated = rad_daily.isel(forecast_period=i - 1).values
+                daily_value = accumulated_value - previous_accumulated
 
             # Distribute according to weights and convert to flux
             for idx, weight in zip(indices, weights):
