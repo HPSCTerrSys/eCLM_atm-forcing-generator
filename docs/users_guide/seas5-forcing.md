@@ -79,7 +79,7 @@ The script outputs radiation directly as flux variables (`flds`,
 `fsds`) in W/m².
 
 ```bash
-	python seas5_daily_to_6hourly.py --const cdsapidwn_SEAS5_const/download_era5_2026_01.nc --daily cdsapidwn_SEAS5_24h/download_era5_2026_01.nc --hourly cdsapidwn_SEAS5_06h/download_era5_2026_01.nc --output cdsapidwn_SEAS5/download_era5_2026_01.nc --frequency 1
+	python seas5_daily_to_6hourly.py --const cdsapidwn_SEAS5_const/download_era5_2026_01.nc --daily cdsapidwn_SEAS5_24h/download_era5_2026_01.nc --hourly cdsapidwn_SEAS5_06h/download_era5_2026_01.nc --output cdsapidwn_SEAS5/download_era5_2026_01.nc --frequency 3 --include-hour-zero
 ```
 
 ### Preparation of SEAS5 data: correct input variables
