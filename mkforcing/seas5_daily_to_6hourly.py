@@ -5,7 +5,7 @@ Convert SEAS5 constant, daily, and 6-hourly variables to a target time resolutio
 This script:
 1. Adds constant `z` (orography) broadcast to all time steps
 2. Expands 6-hourly variables (msl, u10, v10, t2m, d2m) to target frequency
-3. Converts daily `tp` (total precipitation) by dividing equally across intervals
+3. Converts daily `tp` (total precipitation, m) to precipitation flux `avg_tprate` (kg m**-2 s**-1)
 4. Converts daily `strd` (thermal radiation) to flux, distributed equally
 5. Converts daily `ssrd` (solar radiation) to flux with bell-shaped diurnal cycle
    (cosine distribution: zero at 6:00 and 18:00, peak at noon)
@@ -189,6 +189,70 @@ def distribute_daily_to_target(ds_daily, var_name, target_periods_hours, frequen
                 output[:, :, idx, :, :] = daily_value / len(indices)
 
     return output
+
+
+def distribute_precipitation_to_flux(ds_daily, var_name, target_periods_hours, frequency_hours):
+    """
+    Distribute daily accumulated precipitation to target frequency and convert to flux.
+
+    Precipitation is distributed evenly across all intervals.
+    Converts from meters [m] to precipitation rate [kg m**-2 s**-1] (= mm/s).
+
+    Parameters
+    ----------
+    ds_daily : xarray.Dataset
+        Dataset containing daily variables
+    var_name : str
+        Variable name (typically 'tp')
+    target_periods_hours : np.ndarray
+        Target forecast periods in hours
+    frequency_hours : int
+        Target frequency in hours
+
+    Returns
+    -------
+    np.ndarray
+        Precipitation flux (kg m**-2 s**-1) at target frequency
+    """
+    precip_daily = ds_daily[var_name]
+    daily_periods_hours = forecast_period_to_hours(ds_daily["forecast_period"].values)
+
+    # Get dimensions
+    n_number = precip_daily.sizes.get("number", precip_daily.shape[0])
+    n_ref_time = precip_daily.sizes.get("forecast_reference_time", 1)
+    n_lat = precip_daily.sizes.get("latitude", 1)
+    n_lon = precip_daily.sizes.get("longitude", 1)
+    n_target = len(target_periods_hours)
+
+    # Time interval in seconds
+    dt_seconds = frequency_hours * 3600
+
+    # Create output array
+    flux = np.zeros((n_number, n_ref_time, n_target, n_lat, n_lon), dtype=np.float32)
+
+    # For each daily period, distribute to target intervals
+    for i, daily_period_hours in enumerate(daily_periods_hours):
+        # For first day, include hour 0 if present
+        day_start = daily_period_hours - 24
+        if i > 0:
+            day_start += frequency_hours  # Avoid overlap with previous day
+        day_end = daily_period_hours
+
+        indices = []
+        for j, target_hour in enumerate(target_periods_hours):
+            if day_start <= target_hour <= day_end:
+                indices.append(j)
+
+        if len(indices) > 0:
+            # Daily accumulated value in meters [m]
+            daily_value = precip_daily.isel(forecast_period=i).values
+            # Convert: m -> mm (×1000), then divide by interval seconds to get rate
+            # flux [kg m**-2 s**-1] = (daily_value [m] × 1000) / (n_intervals × dt_seconds)
+            flux_value = (daily_value * 1000) / (len(indices) * dt_seconds)
+            for idx in indices:
+                flux[:, :, idx, :, :] = flux_value
+
+    return flux
 
 
 def distribute_thermal_radiation_to_flux(ds_daily, var_name, target_periods_hours, frequency_hours):
@@ -435,9 +499,9 @@ def main():
                 ds_6h, var, target_periods_hours, frequency_hours
             )
 
-    # 3. Distribute daily precipitation
-    print("Distributing daily precipitation...")
-    tp_target = distribute_daily_to_target(
+    # 3. Distribute daily precipitation and convert to flux
+    print("Distributing daily precipitation and converting to flux...")
+    tprate_target = distribute_precipitation_to_flux(
         ds_daily, "tp", target_periods_hours, frequency_hours
     )
 
@@ -519,8 +583,17 @@ def main():
     for var, data in expanded_vars.items():
         ds_out[var] = xr.DataArray(data=data, dims=dims, attrs=ds_6h[var].attrs)
 
-    # Add precipitation
-    ds_out["tp"] = xr.DataArray(data=tp_target, dims=dims, attrs=ds_daily["tp"].attrs)
+    # Add precipitation flux
+    ds_out["avg_tprate"] = xr.DataArray(
+        data=tprate_target,
+        dims=dims,
+        attrs={
+            "units": "kg m**-2 s**-1",
+            "long_name": "Time-mean total precipitation rate",
+            "standard_name": "precipitation_flux",
+            "description": f"Converted from daily tp [m], distributed equally to {frequency_hours}-hourly intervals",
+        },
+    )
 
     # Add radiation fluxes
     ds_out["flds"] = xr.DataArray(
@@ -582,7 +655,7 @@ def main():
             encoding["z"].update(filter_encoding(ds_const["z"].encoding))
 
         if ds_daily["tp"].encoding:
-            encoding["tp"].update(filter_encoding(ds_daily["tp"].encoding))
+            encoding["avg_tprate"].update(filter_encoding(ds_daily["tp"].encoding))
 
         # valid_time should be int64, time should be int32
         # encoding["valid_time"] = {"dtype": "int64"}
@@ -603,7 +676,7 @@ def main():
     for var in vars_6h:
         if var in expanded_vars:
             print(f"  {var}: expanded from 6-hourly by value repetition")
-    print(f"  tp: daily precipitation distributed equally")
+    print(f"  avg_tprate: precipitation rate [kg m**-2 s**-1] - converted from daily tp [m]")
     print(f"  flds: thermal radiation flux - distributed equally (day and night)")
     print(f"  fsds: solar radiation flux - bell-shaped (cosine, 6-18h, peak at noon)")
 

@@ -115,7 +115,7 @@ do
     cp ${tmpdir}/${year}_${month}_temp5.nc  ${year}-${month}.nc
 
     # Rename variables
-    ncrename -v sp,PSRF -v fsds,FSDS -v flds,FLDS -v tp,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${year}-${month}.nc
+    ncrename -v sp,PSRF -v fsds,FSDS -v flds,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${year}-${month}.nc
 
 #    ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${year}_${month}.nc
     ncatted -O -a units,ZBOT,m,c,"m" ${year}-${month}.nc
