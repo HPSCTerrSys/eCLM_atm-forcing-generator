@@ -21,6 +21,7 @@ tmpdir=tmpdir
 wrkdir=""
 author="Default AUTHOR"
 email="d.fault@fz-juelich.de"
+nens=51				# Number of ensemble members to process
 
 # Function to parse input
 parse_arguments() {
@@ -44,6 +45,7 @@ parse_arguments() {
             iyear) iyear="$value" ;;
             author) author="$value" ;;
             email) email="$value" ;;
+            nens) nens="$value" ;;
             *) echo "Warning: Unknown parameter: $key" ;;
         esac
     done
@@ -104,7 +106,7 @@ do
   if $lmerge; then
 
     # Loop over all 51 ensemble members (indices 0-50)
-    for ens in $(seq 0 50); do
+    for ens in $(seq 0 $((nens - 1))); do
       # Format ensemble number as 5-digit with leading zeros (1-based: ens+1)
       ens_num=$(printf "%05d" $((ens + 1)))
       ens_dir=real_${ens_num}
