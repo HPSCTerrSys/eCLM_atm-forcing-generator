@@ -107,7 +107,7 @@ do
     for ens in $(seq 0 50); do
       # Format ensemble number as 5-digit with leading zeros (1-based: ens+1)
       ens_num=$(printf "%05d" $((ens + 1)))
-      ens_dir=${tmpdir}/real_${ens_num}
+      ens_dir=real_${ens_num}
       mkdir -pv ${ens_dir}
 
       # Copy netCDF file for this ensemble member
@@ -144,8 +144,8 @@ do
 #      ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${ens_dir}/${year}-${month}.nc
       ncatted -O -a units,ZBOT,m,c,"m" ${ens_dir}/${year}-${month}.nc
 
-      ncks -Q -O -h --glb author="${author}" ${ens_dir}/${year}-${month}.nc
-      ncks -Q -O -h --glb contact="${email}" ${ens_dir}/${year}-${month}.nc
+      ncks -Q -O -h --glb author="${author}" ${ens_dir}/${year}-${month}.nc ${ens_dir}/${year}-${month}.nc
+      ncks -Q -O -h --glb contact="${email}" ${ens_dir}/${year}-${month}.nc ${ens_dir}/${year}-${month}.nc
 
       # Cleanup temporary files for this ensemble member
       rm ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
