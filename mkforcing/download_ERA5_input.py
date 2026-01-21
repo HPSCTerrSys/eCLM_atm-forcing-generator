@@ -11,17 +11,19 @@ Requirements:
     - CDS API credentials configured in ~/.cdsapirc
 
 Usage:
-    python download_ERA5_input.py <year> <month> <output_directory>
-    python download_ERA5_input.py 2017 7 ./output
+    python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
     python download_ERA5_input.py --help
 
 Note:
     CDS API credentials must be configured before use.
     See: https://cds.climate.copernicus.eu/api-how-to
 """
+import argparse
 import calendar
 import cdsapi
-import sys
+# import sys
 import os
 import tempfile
 
@@ -88,6 +90,9 @@ def generate_datarequest(year, monthstr, days,
                          target=None):
     """Generate and execute ERA5 data download request.
 
+    "ERA5 hourly data on single levels from 1940 to present":
+    https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview
+
     Args:
         year (int): Year to download
         monthstr (str): Month as zero-padded string (e.g., '07')
@@ -128,8 +133,17 @@ def generate_datarequest(year, monthstr, days,
             ],
             "data_format": "netcdf",
             "download_format": "unarchived",
-            "area": [74, -42, 20, 69]
+            "area": [74, -42, 20, 69]  # N, W, S, E
         }
+    else:
+        # Adapt year, month and day to input values
+        request["year"] = [str(year)]
+        request["month"] = [monthstr]
+        if dataset == "seasonal-original-single-levels":
+            # First day of month specified for SEAS5
+            request["day"] = ["01"]
+        else:
+            request["day"] = days
 
     # Temporary filename w/o extension if not provided
     auto_detect_extension = target is None
@@ -149,7 +163,7 @@ def generate_datarequest(year, monthstr, days,
         extension = detect_file_type(target)
 
         # Rename to final target with correct extension
-        final_target = f'{target}{extension}'
+        final_target = f'download_era5_{year}_{monthstr}{extension}'
         os.rename(target, final_target)
         target = final_target
 
@@ -158,10 +172,56 @@ def generate_datarequest(year, monthstr, days,
 
 if __name__ == "__main__":
 
-    # Get the year and month from command-line arguments
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    dirout = sys.argv[3]
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Download ERA5 reanalysis data from Copernicus Climate Data Store (CDS)."
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        required=False,
+        default=None,
+        help="Year to download (e.g., 2017). Required for default request, optional for custom request (uses year from custom request if not provided).",
+    )
+    parser.add_argument(
+        "--month",
+        type=int,
+        required=False,
+        default=None,
+        help="Month to download (1-12). Required for default request, optional for custom request (uses month from custom request if not provided)."
+    )
+    parser.add_argument(
+        "--day",
+        type=str,
+        required=False,
+        default=None,
+        help="Day(s) to download as comma-separated values (e.g., '15' or '1,15,30'). If not provided, all days in the month are downloaded."
+    )
+    parser.add_argument(
+        "--dirout",
+        type=str,
+        required=True,
+        help="Output directory path"
+    )
+    parser.add_argument(
+        "--request",
+        type=str,
+        required=False,
+        help="Path to Python file defining custom 'request' variable"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=False,
+        default="reanalysis-era5-single-levels",
+        help="CDS dataset name (default: reanalysis-era5-single-levels)"
+    )
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+    year = args.year
+    month = args.month
+    dirout = args.dirout
 
     # Ensure the output directory exists, if not, create it
     if not os.path.exists(dirout):
@@ -170,15 +230,78 @@ if __name__ == "__main__":
     # change to output directory
     os.chdir(dirout)
 
+    # Load custom request if provided
+    custom_request = None
+    custom_dataset = args.dataset
+    if args.request:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
+        custom_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(custom_module)
+        if hasattr(custom_module, 'request'):
+            custom_request = custom_module.request
+            print(f"Loaded custom request from: {args.request}")
+        else:
+            print(f"Warning: No 'request' variable found in {args.request}, using default")
+        if hasattr(custom_module, 'dataset'):
+            custom_dataset = custom_module.dataset
+            print(f"Loaded custom dataset from: {args.request}")
+
+    # Handle year: extract from custom request if not provided
+    if year is None:
+        if custom_request and "year" in custom_request:
+            year_from_request = custom_request["year"]
+            if isinstance(year_from_request, list):
+                year = int(year_from_request[0])
+            else:
+                year = int(year_from_request)
+            print(f"Using year from custom request: {year}")
+        else:
+            raise ValueError(
+                "Year is required. Provide it either as --year argument "
+                "or in the custom request file."
+            )
+
+    # Handle month: extract from custom request if not provided
+    if month is None:
+        if custom_request and "month" in custom_request:
+            month_from_request = custom_request["month"]
+            if isinstance(month_from_request, list):
+                month = int(month_from_request[0])
+            else:
+                month = int(month_from_request)
+            print(f"Using month from custom request: {month}")
+        else:
+            raise ValueError(
+                "Month is required. Provide it either as --month argument "
+                "or in the custom request file."
+            )
+
     # Format the month with a leading zero if needed
     monthstr = f"{month:02d}"
 
-    # Get the list of days for the request
-    days = generate_days(year, month)
+    # Handle day: parse from argument, extract from custom request, or compute all days
+    if args.day is not None:
+        # Parse comma-separated day values
+        days = [int(d.strip()) for d in args.day.split(',')]
+        print(f"Using days from argument: {days}")
+    elif custom_request and "day" in custom_request:
+        # Extract from custom request
+        day_from_request = custom_request["day"]
+        if isinstance(day_from_request, list):
+            days = [int(d) for d in day_from_request]
+        else:
+            days = [int(day_from_request)]
+        print(f"Using days from custom request: {days}")
+    else:
+        # Compute all days in the month
+        days = generate_days(year, month)
+        print(f"Using all days in month: {len(days)} days")
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
+    print(f"Dataset: {custom_dataset}")
     print(f"Output directory: {os.getcwd()}")
 
     # Execute download request
-    target = generate_datarequest(year, monthstr, days)
+    target = generate_datarequest(year, monthstr, days, dataset=custom_dataset, request=custom_request)
     print(f"Download complete: {os.path.abspath(target)}")

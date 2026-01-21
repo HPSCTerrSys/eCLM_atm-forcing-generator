@@ -17,6 +17,7 @@ The folder `mkforcing/` contains three scripts that assist the ERA5 retrieval.
 
 Note: This worfklow is not fully tested.
 
+(era5forcing-download)=
 ### Download of ERA5 data
 
 `download_ERA5_input.py` contains a prepared retrieval for the cdsapi python module.
@@ -26,7 +27,7 @@ More information about the installation and access can be found [here](https://c
 
 Usage:
 Either directly:
-`python download_ERA5_input.py <year> <month> <output_directory>`
+`python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>`
 Or using the wrapper script:
 `./download_ERA5_input_wrapper.sh`
 after changing dates and output directory in the `Settings` section inside this wrapper script.
@@ -54,7 +55,26 @@ Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Remapping, Data merging, CLM3.5
+### Preparation of ERA5 data II: Specific humidity computation and 2m->10m conversion
+
+For users, who do not have access to the Meteocloud from the previous
+section.
+
+For ERA5, specific humidity can be computed from dewpoint temperature
+and surface pressure using
+
+```
+python dewpoint_to_specific_humidity.py <era5_filename>
+```
+
+Also temperature and specific humidity can be converted from 2m to 10m
+using.
+
+```
+python 2m_to_10m_conversion.py <era5_filename>
+```
+
+### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
 
 The `prepare_ERA5_input.sh` script prepares ERA5 data by remapping,
 changing variable names, and modifying units. The script performs
@@ -87,6 +107,10 @@ cdo gendis,<eclm_domainfile.nc> <era5caf_yyyy_mm.nc> <wgtdis_era5caf_to_domain.n
 cdo gendis,<eclm_domainfile.nc> <era5meteo_yyyy_mm.nc> <wgtdis_era5meteo_to_domain.nc>
 cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
 ```
+
+- `<era5caf_yyyy_mm.nc>`: `caf` stands for "CdsApi Format" and `<era5caf_yyyy_mm.nc>` can be on of the netCDF-files downloaded from the cdsapi.
+- `<wgtdis_era5caf_to_domain.nc>` can be chosen, illustrative example:
+  `wgtdis_era5caf_to_eur11u-189976.nc`
 
 Then specify the created files as options:
 
