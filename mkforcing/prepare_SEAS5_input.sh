@@ -72,58 +72,86 @@ do
 
   if $lrmp; then
 
-    # Copy netCDF file
-    cp ${pathdata}/download_era5_${year}_${month}.nc ${tmpdir}
+    # Copy netCDF file to a template for remapping (preserves original with all ensemble members)
+    cp ${pathdata}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
 
-    # Extract the first ensemble member
-    # TODO: Preparation of all 51 ensemble members
-    ncks --overwrite -d number,0 -O ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
+    # Extract the first ensemble member for the template
+    # The original file with all 51 ensemble members remains in pathdata for later processing
+    ncks --overwrite -d number,0 -O ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
     # Remove number and forecast_reference_time dimensions
-    ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
-    ncwa --overwrite -a number ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}.nc
+    ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
+    ncwa --overwrite -a number ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
 
     # 1) Renaming variable 'valid_time' to 'time' in $file
     # 2) Renaming dimension 'forecast_period' to 'valid_time' in $file
     # Background: With this naming scheme the CDO remap command below will generate a time variable
     # called "time" in "seconds since 1970-01-01" as for ERA5.
-    ncrename -v valid_time,time ${tmpdir}/download_era5_${year}_${month}.nc
-    ncrename -d forecast_period,valid_time ${tmpdir}/download_era5_${year}_${month}.nc
+    ncrename -v valid_time,time ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
+    ncrename -d forecast_period,valid_time ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
 
     if $lwgtdis; then
-      cdo gendis,${domainfile} ${tmpdir}/download_era5_${year}_${month}.nc ${wgtcaf}
+      cdo gendis,${domainfile} ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${wgtcaf}
     fi
 
     if $lgriddes; then
       cdo griddes ${domainfile} > ${griddesfile}
     fi
 
-    cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/download_era5_${year}_${month}.nc ${tmpdir}/rmp_era5_${year}_${month}.nc
+    # TODO: Look into remapping! Now skipped here, but done in the loop below
+    # cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/rmp_era5_${year}_${month}.nc
   fi
 
   if $lmerge; then
 
-    cdo -P ${ompthd} expr,'WIND=sqrt(u10^2+v10^2)' ${tmpdir}/rmp_era5_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp.nc # Calculate WIND from u10 and v10
-    cdo -f nc4c const,10,${tmpdir}/rmp_era5_${year}_${month}.nc ${tmpdir}/${year}_${month}_const.nc
-    ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}.nc ${tmpdir}/${year}_${month}_temp2.nc
+    # Loop over all 51 ensemble members (indices 0-50)
+    for ens in $(seq 0 50); do
+      # Format ensemble number as 5-digit with leading zeros (1-based: ens+1)
+      ens_num=$(printf "%05d" $((ens + 1)))
+      ens_dir=${tmpdir}/real_${ens_num}
+      mkdir -pv ${ens_dir}
 
-    cdo merge ${tmpdir}/${year}_${month}_const.nc ${tmpdir}/${year}_${month}_temp2.nc \
-        ${tmpdir}/${year}_${month}_temp.nc ${tmpdir}/${year}_${month}_temp4.nc
+      # Copy netCDF file for this ensemble member
+      cp ${pathdata}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
 
-    ncks -C -x -v hyai,hyam,hybi,hybm ${tmpdir}/${year}_${month}_temp4.nc ${tmpdir}/${year}_${month}_temp5.nc
+      # Extract the specific ensemble member
+      ncks --overwrite -d number,${ens} -O ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
+      # Remove number and forecast_reference_time dimensions
+      ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
+      ncwa --overwrite -a number ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
 
-    # Simply copy the file
-    cp ${tmpdir}/${year}_${month}_temp5.nc  ${year}-${month}.nc
+      # Rename dimensions/variables for CDO compatibility
+      ncrename -v valid_time,time ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
+      ncrename -d forecast_period,valid_time ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
 
-    # Rename variables
-    ncrename -v sp,PSRF -v fsds,FSDS -v flds,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${year}-${month}.nc
+      # Remap this ensemble member
+      cdo -P ${ompthd} remap,${griddesfile},${wgtcaf} ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/rmp_era5_${year}_${month}_ens${ens}.nc
 
-#    ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${year}_${month}.nc
-    ncatted -O -a units,ZBOT,m,c,"m" ${year}-${month}.nc
+      cdo -P ${ompthd} expr,'WIND=sqrt(u10^2+v10^2)' ${tmpdir}/rmp_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/${year}_${month}_temp.nc # Calculate WIND from u10 and v10
+      cdo -f nc4c const,10,${tmpdir}/rmp_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/${year}_${month}_const.nc
+      ncpdq -U ${tmpdir}/rmp_era5_${year}_${month}_ens${ens}.nc ${tmpdir}/${year}_${month}_temp2.nc
 
-    ncks -O -h --glb author="${author}" ${year}-${month}.nc
-    ncks -O -h --glb contact="${email}" ${year}-${month}.nc
+      cdo merge ${tmpdir}/${year}_${month}_const.nc ${tmpdir}/${year}_${month}_temp2.nc \
+          ${tmpdir}/${year}_${month}_temp.nc ${tmpdir}/${year}_${month}_temp4.nc
 
-    rm ${tmpdir}/${year}_${month}_temp*nc ${tmpdir}/${year}_${month}_const.nc
+      ncks -Q -C -x -v hyai,hyam,hybi,hybm ${tmpdir}/${year}_${month}_temp4.nc ${tmpdir}/${year}_${month}_temp5.nc
+
+      # Copy to ensemble-specific directory
+      cp ${tmpdir}/${year}_${month}_temp5.nc ${ens_dir}/${year}-${month}.nc
+
+      # Rename variables
+      ncrename -v sp,PSRF -v fsds,FSDS -v flds,FLDS -v avg_tprate,PRECTmms -v const,ZBOT -v t10m,TBOT -v q10m,QBOT ${ens_dir}/${year}-${month}.nc
+
+#      ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${ens_dir}/${year}-${month}.nc
+      ncatted -O -a units,ZBOT,m,c,"m" ${ens_dir}/${year}-${month}.nc
+
+      ncks -Q -O -h --glb author="${author}" ${ens_dir}/${year}-${month}.nc
+      ncks -Q -O -h --glb contact="${email}" ${ens_dir}/${year}-${month}.nc
+
+      # Cleanup temporary files for this ensemble member
+      rm ${tmpdir}/download_era5_${year}_${month}_ens${ens}.nc
+      rm ${tmpdir}/rmp_era5_${year}_${month}_ens${ens}.nc
+      rm ${tmpdir}/${year}_${month}_temp*nc ${tmpdir}/${year}_${month}_const.nc
+    done
   fi
 
 done
