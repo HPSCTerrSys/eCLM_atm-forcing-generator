@@ -40,7 +40,7 @@ while [ "$current_date" \< "$end_date" ]; do
     month="${current_date#*-}"
 
     # start download script with data request
-    ./download_ERA5_input.py $year $month $out_dir
+    ./download_ERA5_input.py --year $year --month $month --dirout $out_dir
 
     # Increment the month, arbitrarily setting unimportant day of month to 1
     # POSIX.1-2024 prescribes that months start at zero and years are since 1900
