@@ -14,6 +14,8 @@ parts:
     title: ERA5 atmospheric forcing
   - file: users_guide/other-forcing
     title: Other atmospheric forcing
+  - file: users_guide/checking-forcing
+    title: Checking atmospheric forcing
 
 - caption: Reference
   chapters:
