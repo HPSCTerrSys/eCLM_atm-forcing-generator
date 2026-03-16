@@ -9,12 +9,29 @@ def calc_relative_humidity(temp, pres, qv):
     """
     Calculate relative humidity in % from temperature (K), pressure (Pa), and specific humidity (kg/kg)
     Using the standard formula: RH = 100 * e / es
+
+    Sources:
+    -------
+    - Alduchov, O. A., & Eskridge, R. E. (1996). Improved magnus form
+      approximation of saturation vapor pressure. Journal of Applied
+      Meteorology, 35(4), 601–609.
+      http://dx.doi.org/10.1175/1520-0450(1996)035<0601:imfaos>2.0.co;2
+    - Stull, R., 2017: "Practical Meteorology: An Algebra-based Survey of Atmospheric
+      Science" -version 1.02b.  Univ. of British Columbia.  940 pages.
+      isbn 978-0-88865-283-6 .
     """
     # Saturation vapor pressure over water (Pa)
     T_C = temp - 273.15
-    es = 610.94 * np.exp((17.625 * T_C) / (T_C + 243.04))
+    a = 17.625       # Magnus form constant a (Alduchov1996, Table1, Approx. AERK)
+    b = 243.04       # Magnus form constant b (Alduchov1996, Table1, Approx. AERK)
+    c = 610.94       # Magnus form constant c (Alduchov1996, Table1, Approx. AERK)
+    es = c * np.exp((a * T_C) / (T_C + b))  # Alduchov1996, Eq.6
+
     # Actual vapor pressure
-    e = qv * pres / (0.622 + 0.378 * qv)
+    eps = 0.622  # Ratio of molecular weights
+    e = qv * pres / (eps + (1-eps) * qv)  # e.g. Stull2016, Table4-2a, Equation (4.7), solved for e
+
+    # Relative Humidity
     RH = 100.0 * e / es
     return RH
 
