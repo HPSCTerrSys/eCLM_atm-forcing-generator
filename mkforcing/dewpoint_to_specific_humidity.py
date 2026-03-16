@@ -34,14 +34,15 @@ def dewpoint_to_specific_humidity(T_d, P):
     """
     # Constants
     epsilon = 0.622  # Ratio of molecular weights
-    a = 610.94       # Magnus form constant a (Alduchov1996)
-    b = 17.625       # Magnus form constant b (Alduchov1996)
-    c = 243.04       # Magnus form constant c (Alduchov1996)
+    # Alduchov1996, Table 1, Approximation AERK
+    a = 17.625       # Magnus form constant a (Alduchov1996)
+    b = 243.04       # Magnus form constant b (Alduchov1996)
+    c = 610.94       # Magnus form constant c (Alduchov1996)
 
     # Convert dewpoint to vapor pressure using August-Roche-Magnus formula
     # e_s in Pa
-    # # Alduchov1996, Table 1, Formula AERK
-    e_s = a * np.exp(b * (T_d - 273.15) / ((T_d - 273.15) + c))
+    # Alduchov1996, Equation 6
+    e_s = c * np.exp(a * (T_d - 273.15) / ((T_d - 273.15) + b))
 
     # # Tetens formula
     # # Stull2017, Equation (4.2)
