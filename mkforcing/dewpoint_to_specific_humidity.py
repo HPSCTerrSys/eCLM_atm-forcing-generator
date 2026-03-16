@@ -5,14 +5,20 @@ import netCDF4
 
 def dewpoint_to_specific_humidity(T_d, P):
     """
-    Convert dewpoint temperature to specific humidity
+    Convert dewpoint temperature (K) to specific humidity (Pa).
 
-    Source:
+    Sources:
     -------
     - Stull, R., 2017: "Practical Meteorology: An Algebra-based Survey of Atmospheric
       Science" -version 1.02b.  Univ. of British Columbia.  940 pages.
       isbn 978-0-88865-283-6 .
     - https://www.eoas.ubc.ca/books/Practical_Meteorology/
+    - Alduchov, O. A., & Eskridge, R. E. (1996). Improved magnus form
+      approximation of saturation vapor pressure. Journal of Applied
+      Meteorology, 35(4), 601–609.
+      http://dx.doi.org/10.1175/1520-0450(1996)035<0601:imfaos>2.0.co;2
+    - Wikipedia:
+      https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation#Meteorology_and_climatology
 
     Parameters:
     -----------
@@ -28,18 +34,21 @@ def dewpoint_to_specific_humidity(T_d, P):
     """
     # Constants
     epsilon = 0.622  # Ratio of molecular weights
+    a = 610.94       # Magnus form constant a (Alduchov1996)
+    b = 17.625       # Magnus form constant b (Alduchov1996)
+    c = 243.04       # Magnus form constant c (Alduchov1996)
 
     # Convert dewpoint to vapor pressure using August-Roche-Magnus formula
     # e_s in Pa
-    # https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation#Meteorology_and_climatology
-    e_s = 610.2 * np.exp(17.625 * (T_d - 273.15) / ((T_d - 273.15) + 243.04))
+    # # Alduchov1996, Table 1, Formula AERK
+    e_s = a * np.exp(b * (T_d - 273.15) / ((T_d - 273.15) + c))
 
     # # Tetens formula
     # # Stull2017, Equation (4.2)
     # e_s = 611.3 * np.exp(17.2694 * (T_d - 273.15) / ((T_d - 273.15) + 237.29))
 
     # Convert vapor pressure to specific humidity
-    # Stull2017, Table 4a
+    # Stull2017, Table 4-2a
     q = epsilon * e_s / (P - (1.0 - epsilon) * e_s)
 
     return q
