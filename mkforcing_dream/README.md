@@ -1,6 +1,6 @@
 # Creation of Forcing Data from ICON-DREAM Reanalysis
 
-> ⚠️ **Status:** Experimental – workflow may change in future versions.
+> **Status:** Experimental – workflow may change in future versions.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The process includes:
 
 2. **Remapping**
    - Remap the data using DWD ICON tools.
-   - ⚠️ Note: This step is planned to be replaced by a CDO-based workflow in future versions.
+   - Note: This step is planned to be replaced by a CDO-based workflow in future versions.
 
 3. **Post-processing**
    - Adjust variables to match eCLM requirements.
@@ -46,10 +46,9 @@ source jsc.2024_Intel.sh
 Run the Python script as follows:
 
 ```bash
-python <script_name>.py [options]
+python <create_foricng>.py [options]
 ```
-
-*(Replace `<script_name>` and options accordingly.)*
+*(Replace directories and options accordingly.)*
 
 ## Credits
 
