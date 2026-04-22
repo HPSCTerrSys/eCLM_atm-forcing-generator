@@ -46,6 +46,7 @@ parse_arguments() {
             author) author="$value" ;;
             email) email="$value" ;;
             nens) nens="$value" ;;
+            domainfile) domainfile="$value" ;;
             *) echo "Warning: Unknown parameter: $key" ;;
         esac
     done

@@ -26,6 +26,23 @@ import cdsapi
 # import sys
 import os
 import tempfile
+import xarray as xr
+import numpy as np
+
+def domain_to_bbox(domain_file: str) -> tuple[int, int, int, int]:
+    """
+    extract the rounded integer bbox of the provided domain file
+    for use in sending to CDS API requests (e.g., for ERA5 or SEAS5 data)
+    """
+    arr = xr.open_dataset(domain_file, engine="netcdf4")
+    x_values = arr.xc.values
+    y_values = arr.yc.values
+    return (
+        int(np.ceil(y_values.max())),
+        int(np.floor(x_values.min())),
+        int(np.floor(y_values.min())),
+        int(np.ceil(x_values.max())),
+    )
 
 
 def generate_days(year, month):
@@ -216,6 +233,14 @@ if __name__ == "__main__":
         default="reanalysis-era5-single-levels",
         help="CDS dataset name (default: reanalysis-era5-single-levels)"
     )
+    parser.add_argument(
+        "--domainfile",
+        type=str,
+        required=False,
+        default=None,
+        help="The path to the domain file, used to calculate bbox for requests"
+    )
+
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -297,6 +322,11 @@ if __name__ == "__main__":
         # Compute all days in the month
         days = generate_days(year, month)
         print(f"Using all days in month: {len(days)} days")
+    
+    domainfile = args.domainfile
+    if domainfile and custom_request and 'area' in custom_request:
+        bbox = domain_to_bbox(domainfile)
+        custom_request["area"] = bbox
 
     print(f"Downloading ERA5 data for {year}-{monthstr}")
     print(f"Dataset: {custom_dataset}")
