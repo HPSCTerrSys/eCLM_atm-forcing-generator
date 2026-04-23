@@ -12,8 +12,12 @@ parts:
     title: Overview atmospheric forcing
   - file: users_guide/era5-forcing
     title: ERA5 atmospheric forcing
+  - file: users_guide/icon-forcing
+    title: ICON output atmospheric forcing
   - file: users_guide/other-forcing
     title: Other atmospheric forcing
+  - file: users_guide/checking-forcing
+    title: Checking atmospheric forcing
 
 - caption: Reference
   chapters:
