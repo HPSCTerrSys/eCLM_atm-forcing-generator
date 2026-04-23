@@ -5,7 +5,7 @@ import netCDF4
 
 def dewpoint_to_specific_humidity(T_d, P):
     """
-    Convert dewpoint temperature (K) to specific humidity (Pa).
+    Convert dewpoint temperature (K) to specific humidity (kg/kg).
 
     Sources:
     -------

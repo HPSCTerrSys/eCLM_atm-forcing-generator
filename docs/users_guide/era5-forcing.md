@@ -56,7 +56,7 @@ after adapting `year` and `month` loops according to needed dates.
 
 ### Preparation of ERA5 data II: Specific humidity computation and 2m->10m conversion
 
-For users, who do not have access to the Meteocloud from the previous
+For users who do not have access to the Meteocloud from the previous
 section.
 
 For ERA5, specific humidity can be computed from dewpoint temperature
@@ -67,7 +67,7 @@ python dewpoint_to_specific_humidity.py <era5_filename>
 ```
 
 Also temperature and specific humidity can be converted from 2m to 10m
-using.
+using:
 
 ```
 python 2m_to_10m_conversion.py <era5_filename>
