@@ -58,8 +58,15 @@ after changing dates and output directory in the `Settings` section inside this 
 
 Non-JSC users should adapt the download script to include temperature, specific humidity and horizontal wind speed.
 
-### Preparation of ERA5 data I: Lowermost model level variables (10m altitude)
-`extract_ERA5_meteocloud.sh` prepares ERA5 variables form the
+### Preparation of ERA5 data
+
+Two options are available for preparing ERA5 variables, depending on
+whether JSC Meteocloud data is accessible. Choose **one** of the
+following options before proceeding to the next step.
+
+#### Option 1: Lowermost model level variables via Meteocloud (JSC users)
+
+`extract_ERA5_meteocloud.sh` prepares ERA5 variables from the
 lowermost model level (relies on JSC-local files).
 
 Uses level 137, for more information see
@@ -72,14 +79,33 @@ https://confluence.ecmwf.int/display/UDOC/L137+model+level+definitions
 `extract_ERA5_meteocloud.sh` provides NetCDF files
 `meteocloud_YYYY_MM.nc` with lowermost model level atmospheric
 variables. The variables from these NetCDF files are used by
-`prepare_ERA5_input.sh` in the following ERA5 preparation step.
+`prepare_ERA5_input.sh` in the following step.
 
 Usage:
 Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Remapping, Data merging, CLM3.5
+#### Option 2: Specific humidity computation and 2m->10m conversion (non-JSC / no Meteocloud access)
+
+For users who do not have access to the Meteocloud, the required
+variables can be derived from the CDS API download directly.
+
+For ERA5, specific humidity can be computed from dewpoint temperature
+and surface pressure using
+
+```
+python dewpoint_to_specific_humidity.py <era5_filename>
+```
+
+Also temperature and specific humidity can be converted from 2m to 10m
+using:
+
+```
+python 2m_to_10m_conversion.py <era5_filename>
+```
+
+### Remapping, Data merging, CLM3.5
 
 The `prepare_ERA5_input.sh` script prepares ERA5 data by remapping,
 changing variable names, and modifying units. The script performs
@@ -112,6 +138,10 @@ cdo gendis,<eclm_domainfile.nc> <era5caf_yyyy_mm.nc> <wgtdis_era5caf_to_domain.n
 cdo gendis,<eclm_domainfile.nc> <era5meteo_yyyy_mm.nc> <wgtdis_era5meteo_to_domain.nc>
 cdo griddes <eclm_domainfile.nc> > <domain_griddef.txt>
 ```
+
+- `<era5caf_yyyy_mm.nc>`: `caf` stands for "CdsApi Format" and `<era5caf_yyyy_mm.nc>` can be on of the netCDF-files downloaded from the cdsapi.
+- `<wgtdis_era5caf_to_domain.nc>` can be chosen, illustrative example:
+  `wgtdis_era5caf_to_eur11u-189976.nc`
 
 Then specify the created files as options:
 
