@@ -234,6 +234,8 @@ if __name__ == "__main__":
     custom_request = None
     custom_dataset = args.dataset
     if args.request:
+        if not os.path.isfile(args.request):
+            raise FileNotFoundError(f"Custom request file not found: {args.request}")
         import importlib.util
         spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
         custom_module = importlib.util.module_from_spec(spec)
