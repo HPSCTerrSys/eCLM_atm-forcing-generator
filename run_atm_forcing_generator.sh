@@ -50,12 +50,12 @@ else
     python "${SCRIPT_DIR}/mkforcing/download_ERA5_input.py" \
         --year ${YEAR} --month ${MONTH} \
         --dirout "${SCRIPT_DIR}/cdsapidwn_SEAS5_24h" \
-        --request "${SCRIPT_DIR}/mkforcing/custom_request_SEAS5_24h.py"#  \
+        --request "${SCRIPT_DIR}/mkforcing/custom_request_SEAS5_24h.py" #  \
         # --domainfile $DOMAINFILE
     python "${SCRIPT_DIR}/mkforcing/download_ERA5_input.py" \
         --year ${YEAR} --month ${MONTH} \
         --dirout "${SCRIPT_DIR}/cdsapidwn_SEAS5_06h" \
-        --request "${SCRIPT_DIR}/mkforcing/custom_request_SEAS5_06h.py"#  \
+        --request "${SCRIPT_DIR}/mkforcing/custom_request_SEAS5_06h.py" #  \
         # --domainfile $DOMAINFILE
     mkdir -p "${SCRIPT_DIR}/cdsapidwn_SEAS5"
     python "${SCRIPT_DIR}/mkforcing/seas5_daily_to_6hourly.py" \
