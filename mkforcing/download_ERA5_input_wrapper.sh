@@ -1,6 +1,27 @@
 #!/bin/sh
-# Before using this script CDSAPI has to be configured (see README)
-# Needs to be executed at LOGIN node as connection to "outside" is required
+#
+# Wrapper to download ERA5 data for a range of months using
+# download_ERA5_input.py.
+#
+# Usage:
+#   ./download_ERA5_input_wrapper.sh [start_date=<yyyy-mm>] [end_date=<yyyy-mm>] \
+#       [out_dir=<dir>] [request=<custom_request_file>]
+#
+# Options:
+#   start_date   First month to download (inclusive), format yyyy-mm.
+#                Default: 2017-07
+#   end_date     First month NOT downloaded (exclusive), format yyyy-mm.
+#                Default: 2018-08
+#   out_dir      Output directory for downloaded files. Default: cdsapidwn
+#   request      Path to a custom CDS API request file. When provided, passed
+#                to download_ERA5_input.py via --request. If omitted, the
+#                default request defined in download_ERA5_input.py is used.
+#
+# Prerequisites:
+#   CDSAPI must be installed and configured with a user-specific API access
+#   token before running this script (see README or era5-forcing docs).
+#   Must be executed on a login node (internet access required).
+#
 set -eo pipefail
 
 # Settings
