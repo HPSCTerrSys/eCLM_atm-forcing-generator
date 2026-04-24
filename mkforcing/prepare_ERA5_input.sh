@@ -151,7 +151,7 @@ do
     if $lmeteo; then
       ncwa -O -a lev ${tmpdir}/${year}_${month}_temp5.nc ${year}-${month}.nc
     else
-       # Simply copy the file
+      # Simply copy the file
       cp ${tmpdir}/${year}_${month}_temp5.nc  ${year}-${month}.nc
     fi
 
