@@ -33,8 +33,15 @@ after changing dates and output directory in the `Settings` section inside this 
 
 Non-JSC users should adapt the download script to include temperature, specific humidity and horizontal wind speed.
 
-### Preparation of ERA5 data I: Lowermost model level variables (10m altitude)
-`extract_ERA5_meteocloud.sh` prepares ERA5 variables form the
+### Preparation of ERA5 data
+
+Two options are available for preparing ERA5 variables, depending on
+whether JSC Meteocloud data is accessible. Choose **one** of the
+following options before proceeding to the next step.
+
+#### Option 1: Lowermost model level variables via Meteocloud (JSC users)
+
+`extract_ERA5_meteocloud.sh` prepares ERA5 variables from the
 lowermost model level (relies on JSC-local files).
 
 Uses level 137, for more information see
@@ -47,17 +54,17 @@ https://confluence.ecmwf.int/display/UDOC/L137+model+level+definitions
 `extract_ERA5_meteocloud.sh` provides NetCDF files
 `meteocloud_YYYY_MM.nc` with lowermost model level atmospheric
 variables. The variables from these NetCDF files are used by
-`prepare_ERA5_input.sh` in the following ERA5 preparation step.
+`prepare_ERA5_input.sh` in the following step.
 
 Usage:
 Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Specific humidity computation and 2m->10m conversion
+#### Option 2: Specific humidity computation and 2m->10m conversion (non-JSC / no Meteocloud access)
 
-For users who do not have access to the Meteocloud from the previous
-section.
+For users who do not have access to the Meteocloud, the required
+variables can be derived from the CDS API download directly.
 
 For ERA5, specific humidity can be computed from dewpoint temperature
 and surface pressure using
@@ -73,7 +80,7 @@ using:
 python 2m_to_10m_conversion.py <era5_filename>
 ```
 
-### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
+### Remapping, Data merging, CLM3.5
 
 The `prepare_ERA5_input.sh` script prepares ERA5 data by remapping,
 changing variable names, and modifying units. The script performs
