@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
     echo "Usage: $0 MODE YEAR MONTH"
     exit 1
