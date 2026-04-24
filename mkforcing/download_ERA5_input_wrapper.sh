@@ -7,6 +7,7 @@ set -eo pipefail
 start_date="2017-07" # yyyy-mm
 end_date="2018-08"   # yyyy-mm + 1
 out_dir="cdsapidwn"
+request=""
 
 # Function to parse input
 parse_arguments() {
@@ -18,6 +19,7 @@ parse_arguments() {
             start_date) start_date="$value" ;;
             end_date) end_date="$value" ;;
             out_dir) out_dir="$value" ;;
+            request) request="$value" ;;
             *) echo "Warning: Unknown parameter: $key" ;;
         esac
     done
@@ -40,7 +42,9 @@ while [ "$current_date" \< "$end_date" ]; do
     month="${current_date#*-}"
 
     # start download script with data request
-    ./download_ERA5_input.py --year $year --month $month --dirout $out_dir
+    request_opt=""
+    [ -n "$request" ] && request_opt="--request $request"
+    ./download_ERA5_input.py --year $year --month $month --dirout $out_dir $request_opt
 
     # Increment the month, arbitrarily setting unimportant day of month to 1
     # POSIX.1-2024 prescribes that months start at zero and years are since 1900
