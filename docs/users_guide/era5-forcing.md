@@ -1,32 +1,53 @@
 (era5forcing)=
 # eCLM atmospheric forcing based on ERA5
 
-Source: Copernicus Climate Data Store
-(<https://cds.climate.copernicus.eu/>), optional: Jülich Meteocloud
-(<https://datapub.fz-juelich.de/slcs/meteocloud/index.html>)
+A possible source of atmospheric forcing for CLM (eCLM, CLM5, CLM3.5)
+is ERA5.
 
-Basis: Mainly CDO commands.
+The folder `mkforcing/` contains the scripts that assist the ERA5
+retrieval.
 
-By sourcing the provided environment file
+
+Source: 
+- Copernicus Climate Data Store (<https://cds.climate.copernicus.eu/>)
+- optional: Jülich Meteocloud
+  (<https://datapub.fz-juelich.de/slcs/meteocloud/index.html>)
+
+Basis: 
+- Mainly CDO commands.
+- Some Python scripts.
+
+Notes:
+- It is safer to extract the lowermost level of temperature, humidity
+  and wind of ERA5 instead of taking mixed 2m-values and 10m
+  values. [This internal
+  issue](https://gitlab.jsc.fz-juelich.de/HPSCTerrSys/tsmp-internal-development-tracking/-/issues/36)
+  provides some details.
+- The `download_ERA5_input.py` can be adapted to download another set
+  of quantities.
+- This worfklow is not fully tested.
+
+## Prerequisites
+
+`download_ERA5_input.py` uses the `cdsapi` Python module to retrieve
+ERA5 data from the Copernicus Climate Data Store. Before using the
+download script, `cdsapi` must be installed and configured with a
+user-specific API access token.
+
+More information about installation and access can be found
+[here](https://cds.climate.copernicus.eu/how-to-api) or alternatively
+[here](https://github.com/ecmwf/cdsapi?tab=readme-ov-file#install).
+
+
+Source the provided environment file
 
 ```
 source jsc.2024_Intel.sh
 ```
 
-## Creation of forcing data from ERA5
-
-A possible source of atmospheric forcing for CLM (eCLM, CLM5, CLM3.5) is ERA5. It is safer to extract the lowermost level of temperature, humidity and wind of ERA5 instead of taking mixed 2m-values and 10m values. [This internal issue](https://gitlab.jsc.fz-juelich.de/HPSCTerrSys/tsmp-internal-development-tracking/-/issues/36) provides some details. The `download_ERA5_input.py` can be adapted to download another set of quantities.
-
-The folder `mkforcing/` contains three scripts that assist the ERA5 retrieval.
-
-Note: This worfklow is not fully tested.
-
 ### Download of ERA5 data
 
-`download_ERA5_input.py` contains a prepared retrieval for the cdsapi python module.
-The script requires that cdsapi is installed with a user specific key (API access token).
-
-More information about the installation and access can be found [here](https://cds.climate.copernicus.eu/how-to-api) or alternatively [here](https://github.com/ecmwf/cdsapi?tab=readme-ov-file#install).
+`download_ERA5_input.py` contains a prepared retrieval for the `cdsapi` python module.
 
 Usage:
 Either directly:
