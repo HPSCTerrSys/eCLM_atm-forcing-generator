@@ -30,7 +30,7 @@ request = {
     "day": ["01"],
     "leadtime_hour": [str(h) for h in range(0, 5161, 6)],
     "data_format": "netcdf",
-    "area": [50.870906, 6.4421445, 50.870906, 6.4421445]      # Selhausen
+    "area": [50.870906+0.5, 6.4421445-0.5, 50.870906-0.5, 6.4421445+0.5]      # Selhausen
     # "area": [74, -42, 20, 69] # Europe
 }
 
