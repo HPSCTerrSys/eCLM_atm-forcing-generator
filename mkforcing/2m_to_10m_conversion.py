@@ -112,14 +112,10 @@ def convert_2m_to_10m_in_netcdf(filename):
         If required variables 't2m' or 'q2m' are not found
     """
 
-    # Open netCDF file in append mode
     print(f"Opening {filename}...")
-    nc = netCDF4.Dataset(filename, "a")
-
-    try:
+    with netCDF4.Dataset(filename, "a") as nc:
         # Check if t10m or q10m already exist - if so, raise error and exit
         if "t10m" in nc.variables or "q10m" in nc.variables:
-            nc.close()
             raise ValueError(
                 f"Variable 't10m' and/or 'q10m' already exist in {filename}. "
                 "No changes made. Delete the variable(s) first if you want to recalculate."
@@ -127,8 +123,13 @@ def convert_2m_to_10m_in_netcdf(filename):
 
         # Read the required variables
         print("Reading temperature (t2m) and specific humidity (q2m)...")
-        t2m = nc.variables["t2m"][:]  # Temperature at 2m [K]
-        q2m = nc.variables["q2m"][:]  # Specific humidity at 2m [kg/kg]
+        try:
+            t2m = nc.variables["t2m"][:]  # Temperature at 2m [K]
+            q2m = nc.variables["q2m"][:]  # Specific humidity at 2m [kg/kg]
+        except KeyError as e:
+            print(f"Error: Required variable not found in netCDF file: {e}")
+            print(f"Available variables: {list(nc.variables.keys())}")
+            raise
 
         print(f"Data shapes - t2m: {t2m.shape}, q2m: {q2m.shape}")
 
@@ -183,26 +184,7 @@ def convert_2m_to_10m_in_netcdf(filename):
         print(f"  Specific humidity 2m mean: {np.mean(q2m):.6f} kg/kg")
         print(f"  Specific humidity 10m mean: {np.mean(q10m):.6f} kg/kg")
 
-    except KeyError as e:
-        print(f"Error: Required variable not found in netCDF file: {e}")
-        print(f"Available variables: {list(nc.variables.keys())}")
-        nc.close()
-        raise
-
-    except ValueError as e:
-        # This catches the "t10m/q10m already exists" error
-        print(f"Error: {e}")
-        raise
-
-    except Exception as e:
-        print(f"Unexpected error occurred: {e}")
-        nc.close()
-        raise
-
-    else:
-        # Only executes if no exception was raised
-        nc.close()
-        print(f"\nFile {filename} closed successfully.")
+    print(f"\nFile {filename} closed successfully.")
 
 
 if __name__ == "__main__":

@@ -1,29 +1,54 @@
 (era5forcing)=
 # eCLM atmospheric forcing based on ERA5
 
-Basis: Mainly CDO commands.
+A possible source of atmospheric forcing for CLM (eCLM, CLM5, CLM3.5)
+is ERA5.
 
-By sourcing the provided environment file
+The folder `mkforcing/` contains the scripts that assist the ERA5
+retrieval.
+
+
+Source: 
+- Copernicus Climate Data Store (<https://cds.climate.copernicus.eu/>)
+- optional: Jülich Meteocloud
+  (<https://datapub.fz-juelich.de/slcs/meteocloud/index.html>)
+
+Basis: 
+- Mainly CDO commands.
+- Some Python scripts.
+
+Notes:
+- It is safer to extract the lowermost level of temperature, humidity
+  and wind of ERA5 instead of taking mixed 2m-values and 10m
+  values. [This internal
+  issue](https://gitlab.jsc.fz-juelich.de/HPSCTerrSys/tsmp-internal-development-tracking/-/issues/36)
+  provides some details.
+- The `download_ERA5_input.py` can be adapted to download another set
+  of quantities.
+- This worfklow is not fully tested.
+
+## Prerequisites
+
+`download_ERA5_input.py` uses the `cdsapi` Python module to retrieve
+ERA5 data from the Copernicus Climate Data Store. Before using the
+download script, `cdsapi` must be installed and configured with a
+user-specific API access token.
+
+More information about installation and access can be found
+[here](https://cds.climate.copernicus.eu/how-to-api) or alternatively
+[here](https://github.com/ecmwf/cdsapi?tab=readme-ov-file#install).
+
+
+Source the provided environment file
 
 ```
 source jsc.2024_Intel.sh
 ```
 
-## Creation of forcing data from ERA5
-
-A possible source of atmospheric forcing for CLM (eCLM, CLM5, CLM3.5) is ERA5. It is safer to extract the lowermost level of temperature, humidity and wind of ERA5 instead of taking mixed 2m-values and 10m values. [This internal issue](https://gitlab.jsc.fz-juelich.de/HPSCTerrSys/tsmp-internal-development-tracking/-/issues/36) provides some details. The `download_ERA5_input.py` can be adapted to download another set of quantities.
-
-The folder `mkforcing/` contains three scripts that assist the ERA5 retrieval.
-
-Note: This worfklow is not fully tested.
-
 (era5forcing-download)=
 ### Download of ERA5 data
 
-`download_ERA5_input.py` contains a prepared retrieval for the cdsapi python module.
-The script requires that cdsapi is installed with a user specific key (API access token).
-
-More information about the installation and access can be found [here](https://cds.climate.copernicus.eu/how-to-api) or alternatively [here](https://github.com/ecmwf/cdsapi?tab=readme-ov-file#install).
+`download_ERA5_input.py` contains a prepared retrieval for the `cdsapi` python module.
 
 Usage:
 Either directly:
@@ -34,8 +59,15 @@ after changing dates and output directory in the `Settings` section inside this 
 
 Non-JSC users should adapt the download script to include temperature, specific humidity and horizontal wind speed.
 
-### Preparation of ERA5 data I: Lowermost model level variables (10m altitude)
-`extract_ERA5_meteocloud.sh` prepares ERA5 variables form the
+### Preparation of ERA5 data
+
+Two options are available for preparing ERA5 variables, depending on
+whether JSC Meteocloud data is accessible. Choose **one** of the
+following options before proceeding to the next step.
+
+#### Option 1: Lowermost model level variables via Meteocloud (JSC users)
+
+`extract_ERA5_meteocloud.sh` prepares ERA5 variables from the
 lowermost model level (relies on JSC-local files).
 
 Uses level 137, for more information see
@@ -48,17 +80,17 @@ https://confluence.ecmwf.int/display/UDOC/L137+model+level+definitions
 `extract_ERA5_meteocloud.sh` provides NetCDF files
 `meteocloud_YYYY_MM.nc` with lowermost model level atmospheric
 variables. The variables from these NetCDF files are used by
-`prepare_ERA5_input.sh` in the following ERA5 preparation step.
+`prepare_ERA5_input.sh` in the following step.
 
 Usage:
 Running the wrapper job
 `sbatch extract_ERA5_meteocloud_wrapper.job`
 after adapting `year` and `month` loops according to needed dates.
 
-### Preparation of ERA5 data II: Specific humidity computation and 2m->10m conversion
+#### Option 2: Specific humidity computation and 2m->10m conversion (non-JSC / no Meteocloud access)
 
-For users, who do not have access to the Meteocloud from the previous
-section.
+For users who do not have access to the Meteocloud, the required
+variables can be derived from the CDS API download directly.
 
 For ERA5, specific humidity can be computed from dewpoint temperature
 and surface pressure using
@@ -68,13 +100,13 @@ python dewpoint_to_specific_humidity.py <era5_filename>
 ```
 
 Also temperature and specific humidity can be converted from 2m to 10m
-using.
+using:
 
 ```
 python 2m_to_10m_conversion.py <era5_filename>
 ```
 
-### Preparation of ERA5 data III: Remapping, Data merging, CLM3.5
+### Remapping, Data merging, CLM3.5
 
 The `prepare_ERA5_input.sh` script prepares ERA5 data by remapping,
 changing variable names, and modifying units. The script performs
