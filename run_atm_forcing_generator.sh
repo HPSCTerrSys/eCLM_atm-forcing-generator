@@ -10,7 +10,8 @@ YEAR=$2
 MONTH=$3
 DOMAINFILE="domain.lnd.DE-RuS_DE-RuS.250926.nc"
 
-source jsc.2024_Intel.sh 
+source jsc.2024_Intel.sh
+pip install .
 
 mkdir -p ${YEAR}-${MONTH}
 if [[ "$MODE" == "ERA5" ]]; then
