@@ -11,6 +11,12 @@ MONTH=$3
 DOMAINFILE="domain.lnd.DE-RuS_DE-RuS.250926.nc"
 
 source jsc.2024_Intel.sh
+
+VENV_DIR="pyvenv_eclm_atm_forcing_generator"
+if [[ ! -d "$VENV_DIR" ]]; then
+    python -m venv "$VENV_DIR"
+fi
+source "${VENV_DIR}/bin/activate"
 pip install .
 
 mkdir -p ${YEAR}-${MONTH}
