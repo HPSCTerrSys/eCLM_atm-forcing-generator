@@ -1,6 +1,10 @@
 (era5forcing)=
 # eCLM atmospheric forcing based on ERA5
 
+Source: Copernicus Climate Data Store
+(<https://cds.climate.copernicus.eu/>), optional: Jülich Meteocloud
+(<https://datapub.fz-juelich.de/slcs/meteocloud/index.html>)
+
 Basis: Mainly CDO commands.
 
 By sourcing the provided environment file
