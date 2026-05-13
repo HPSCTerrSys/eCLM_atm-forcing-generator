@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Resolve script directory before any cd
+script_dir=$(cd "$(dirname "$0")" && pwd)
+
 # default values of parameters
 lrmp=true
 lmerge=true
@@ -88,7 +91,7 @@ do
   if $lrmp; then
     if $lunzip; then
       # Unzip ERA5-downloaded data from zip file
-      unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+      unzip -o ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
     else
       # Copy already unzipped data
       cp ${pathdata}/data_stream-oper_stepType-instant.nc ${pathdata}/data_stream-oper_stepType-avg.nc ${tmpdir}
@@ -108,9 +111,9 @@ do
 
     if ! $lmeteo; then
       # Compute specific humidity (q2m) from dewpoint temperature and surface pressure
-      python $(dirname "$0")/dewpoint_to_specific_humidity.py ${tmpdir}/data_stream-oper_stepType-instant.nc
+      python ${script_dir}/dewpoint_to_specific_humidity.py ${tmpdir}/data_stream-oper_stepType-instant.nc
       # Extrapolate temperature (t10m) and specific humidity (q10m) from 2m to 10m
-      python $(dirname "$0")/2m_to_10m_conversion.py ${tmpdir}/data_stream-oper_stepType-instant.nc
+      python ${script_dir}/2m_to_10m_conversion.py ${tmpdir}/data_stream-oper_stepType-instant.nc
     fi
 
     if $lwgtdis; then
