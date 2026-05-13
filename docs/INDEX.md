@@ -10,6 +10,9 @@ For a Python script that validates eCLM atmospheric forcing files
 specified in `datm_in` namelist and stream files see [Checking
 Atmospheric Forcing](checkingforcing).
 
+For generating perturbed ensemble atmospheric forcings for eCLM-PDAF
+data assimilation experiments see [Perturbing Atmospheric Forcings](perturbforcings).
+
 ```{important}
 **Welcome!** You are viewing the first version of the documentation for eCLM atmospheric forcing generator. This is a living document, which means it will be continuously updated and improved. Please check back regularly for the latest information and updates.
 ```
