@@ -31,8 +31,8 @@ iyear=2017
 imonth=07
 tmpdir=tmpdir
 wrkdir=""
-author="Stefan POLL"
-email="s.poll@fz-juelich.de"
+author=$(git config user.name 2>/dev/null || echo "${USER}")
+email=$(git config user.email 2>/dev/null || echo "")
 
 # Function to parse input
 parse_arguments() {
