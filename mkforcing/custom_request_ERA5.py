@@ -28,7 +28,7 @@ request = {
     ],
     "data_format": "netcdf",
     "download_format": "zip",
-    "area": [50.870906, 6.4421445, 50.860906, 6.4521445]      # Selhausen
+    "area": [50.865906 + 0.25, 6.4471445 - 0.25, 50.865906 - 0.25, 6.4471445 + 0.25]  # Selhausen ± 0.25° [N, W, S, E]
     # "area": [74, -42, 20, 69] # Europe
 }
 
