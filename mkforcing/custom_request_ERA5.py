@@ -27,8 +27,8 @@ request = {
         "21:00", "22:00", "23:00"
     ],
     "data_format": "netcdf",
-    "download_format": "unarchived",
-    "area": [50.870906, 6.4421445, 50.870906, 6.4421445]      # Selhausen
+    "download_format": "zip",
+    "area": [50.870906, 6.4421445, 50.860906, 6.4521445]      # Selhausen
     # "area": [74, -42, 20, 69] # Europe
 }
 
