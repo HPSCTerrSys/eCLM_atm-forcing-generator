@@ -81,6 +81,7 @@ do
   if [ -z ${wrkdir} ];then
     wrkdir=${iyear}-${imonth}
   fi
+  mkdir -pv $wrkdir
   cd $wrkdir
   mkdir -pv $tmpdir
 
@@ -103,6 +104,13 @@ do
         # Renaming variable 'valid_time' to 'time' in $file
         ncrename -v valid_time,time "$file"
       done
+    fi
+
+    if ! $lmeteo; then
+      # Compute specific humidity (q2m) from dewpoint temperature and surface pressure
+      python $(dirname "$0")/dewpoint_to_specific_humidity.py ${tmpdir}/data_stream-oper_stepType-instant.nc
+      # Extrapolate temperature (t10m) and specific humidity (q10m) from 2m to 10m
+      python $(dirname "$0")/2m_to_10m_conversion.py ${tmpdir}/data_stream-oper_stepType-instant.nc
     fi
 
     if $lwgtdis; then
