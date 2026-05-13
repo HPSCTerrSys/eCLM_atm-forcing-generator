@@ -16,6 +16,8 @@ parts:
     title: Other atmospheric forcing
   - file: users_guide/checking-forcing
     title: Checking atmospheric forcing
+  - file: users_guide/perturb-forcings
+    title: Perturbing atmospheric forcings
 
 - caption: Reference
   chapters:
