@@ -7,14 +7,14 @@ dataset = "reanalysis-era5-single-levels"
 request = {
     "product_type": ["reanalysis"],
     "variable": [
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "2m_dewpoint_temperature",
+        "2m_temperature",
         "surface_pressure",
         "mean_surface_downward_long_wave_radiation_flux",
         "mean_surface_downward_short_wave_radiation_flux",
-        "mean_total_precipitation_rate",
-        "10m_u_component_of_wind",
-        "10m_v_component_of_wind",
-        "2m_temperature",
-        "2m_dewpoint_temperature",
+        "mean_total_precipitation_rate"
     ],
     "time": [
         "00:00", "01:00", "02:00",
