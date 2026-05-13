@@ -28,7 +28,7 @@ request = {
     ],
     "data_format": "netcdf",
     "download_format": "zip",
-    "area": [50.865906 + 0.25, 6.4471445 - 0.25, 50.865906 - 0.25, 6.4471445 + 0.25]  # Selhausen ± 0.25° [N, W, S, E]
+    "area": [50.865906 + 0.125, 6.4471445 - 0.125, 50.865906 - 0.125, 6.4471445 + 0.125]  # Selhausen ± 0.125° → single ERA5 grid point [N, W, S, E]
     # "area": [74, -42, 20, 69] # Europe
 }
 
