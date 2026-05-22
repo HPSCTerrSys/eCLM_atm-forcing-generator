@@ -37,6 +37,7 @@ parse_arguments() {
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
+            domainfile) domainfile="$value" ;;
             # wgtmeteo) wgtmeteo="$value" ;;
             griddesfile) griddesfile="$value" ;;
             tmpdir) tmpdir="$value" ;;
