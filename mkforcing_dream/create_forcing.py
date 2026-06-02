@@ -209,7 +209,7 @@ def process_icon_dream(path_file, y, m, output_path):
         "dtype": "float64"
     }
     
-    target_ni = 2437848
+    target_ni = 189976
     if ds.sizes["ni"] > target_ni:
         ds = ds.isel(ni=slice(-target_ni, None))
         for coord in ["xc", "yc"]:
