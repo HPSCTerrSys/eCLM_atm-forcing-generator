@@ -46,7 +46,7 @@ source jsc.2024_Intel.sh
 Run the Python script as follows:
 
 ```bash
-python3 create_forcing.py   --year 2022   --months 6   --base_dir /p/scratch/detectrea2/meurer1   --icon_template create_init_icon_eclm.sh   --tools_workdir /p/scratch/detectrea2/meurer1/dwd_icon_tools   --ingrid /p/scratch/detectrea2/meurer1/dream_grids/ICON-DREAM-EU_grid.nc   --localgrid /p/scratch/detectrea2/meurer1/simexp_DETECT_EUR-3-iic_DWD-ICONglobe_forecast_r1i1p1_FZJ-ICON2024-07-eCLM0-4-0-ParFlow3-14-0_v1/dta/geo/icon/static/EUR-R13B07_2473796_grid_inclbrz_v1.nc   --account detectrea2
+python3 create_forcing.py   --year 2022   --months 6   --base_dir /p/scratch/detectrea2/meurer1   --icon_template create_init_icon_eclm.sh   --tools_workdir /p/scratch/detectrea2/meurer1/dwd_icon_tools   --ingrid /p/scratch/detectrea2/meurer1/dream_grids/ICON-DREAM-EU_grid.nc   --localgrid /p/scratch/detectrea2/meurer1/TSMP2_workflow-engine/dta/geo/icon/static/europe011_DOM01.nc   --account detectrea2
 ```
 *(Replace directories and options accordingly.)*
 
