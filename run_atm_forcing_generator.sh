@@ -23,23 +23,23 @@ pip install "${SCRIPT_DIR}"
 mkdir -p "${SCRIPT_DIR}/${YEAR}-${MONTH}"
 if [[ "$MODE" == "ERA5" ]]; then
   echo "$MODE not available"
-    # mkdir -p data
-    # uv run mkforcing/download_ERA5_input.py \
-    #     --year $YEAR \
-    #     --month $MONTH \
-    #     --dirout data \
-    #     --request "${HOME}/mkforcing/custom_request_ERA5.py" \
-    #     --domainfile "${HOME}/domain.nc"
-    # unzip "data/download_era5_${YEAR}_${MONTH}.zip" -d data/
-    # uv run mkforcing/dewpoint_to_specific_humidity.py data/data_stream-oper_stepType-instant.nc
-    # uv run mkforcing/2m_to_10m_conversion.py data/data_stream-oper_stepType-instant.nc
-    # mkforcing/prepare_ERA5_input.sh \
-    #     lrenametime=true lmeteo=false \
-    #     lunzip=false wgtcaf=../wgtdis_era5caf_to_domain.nc \
-    #     griddesfile=../domain_griddef.txt iyear=$YEAR \
-    #     imonth=$MONTH \
-    #     pathdata=../data \
-    #     lwgtdis=true lgriddes=true domainfile="${HOME}/domain.nc"
+    mkdir -p data
+    python run mkforcing/download_ERA5_input.py \
+        --year $YEAR \
+        --month $MONTH \
+        --dirout data \
+        --request "${SCRIPT_DIR}/mkforcing/custom_request_ERA5.py" \
+        # --domainfile "${SCRIPT_DIR}/domain.nc"
+    unzip "data/download_era5_${YEAR}_${MONTH}.zip" -d data/
+    python run mkforcing/dewpoint_to_specific_humidity.py data/data_stream-oper_stepType-instant.nc
+    python run mkforcing/2m_to_10m_conversion.py data/data_stream-oper_stepType-instant.nc
+    mkforcing/prepare_ERA5_input.sh \
+        lrenametime=true lmeteo=false \
+        lunzip=false wgtcaf=../wgtdis_era5caf_to_domain.nc \
+        griddesfile=../domain_griddef.txt iyear=$YEAR \
+        imonth=$MONTH \
+        pathdata=../data \
+        lwgtdis=true lgriddes=true domainfile="${SCRIPT_DIR}/${DOMAINFILE}"
 
 else
     python "${SCRIPT_DIR}/mkforcing/download_ERA5_input.py" \
