@@ -57,7 +57,10 @@ Or using the wrapper script:
 `./download_ERA5_input_wrapper.sh`
 after changing dates and output directory in the `Settings` section inside this wrapper script.
 
-Non-JSC users should adapt the download script to include temperature, specific humidity and horizontal wind speed.
+Non-JSC users should adapt the download script to include temperature,
+dewpoint temperature (`d2m`), surface pressure (`sp`), and horizontal
+wind speed. The `d2m` and `sp` variables are required by
+`dewpoint_to_specific_humidity.py` when using Option 2 below.
 
 ### Preparation of ERA5 data
 
@@ -92,19 +95,16 @@ after adapting `year` and `month` loops according to needed dates.
 For users who do not have access to the Meteocloud, the required
 variables can be derived from the CDS API download directly.
 
-For ERA5, specific humidity can be computed from dewpoint temperature
-and surface pressure using
+When running `prepare_ERA5_input.sh` with `lmeteo=false`, the script
+automatically calls:
 
-```
-python dewpoint_to_specific_humidity.py <era5_filename>
-```
+1. `dewpoint_to_specific_humidity.py` — computes specific humidity (`q2m`)
+   from dewpoint temperature (`d2m`) and surface pressure (`sp`)
+2. `2m_to_10m_conversion.py` — extrapolates temperature and specific
+   humidity from 2m to 10m (`t10m`, `q10m`)
 
-Also temperature and specific humidity can be converted from 2m to 10m
-using:
-
-```
-python 2m_to_10m_conversion.py <era5_filename>
-```
+Both scripts modify the ERA5 instant file in place before remapping.
+No manual invocation of these scripts is needed.
 
 ### Remapping, Data merging, CLM3.5
 

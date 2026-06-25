@@ -51,8 +51,8 @@ parse_arguments() {
 parse_arguments "$@"
 
 
-# create output directory
-mkdir -p $out_dir
+# create output directory (now handled by download_ERA5_input.py)
+# mkdir -p $out_dir
 
 # loop over months
 current_date=$start_date

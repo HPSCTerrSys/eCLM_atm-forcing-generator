@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Resolve script directory before any cd
+script_dir=$(cd "$(dirname "$0")" && pwd)
+
 # default values of parameters
 lrmp=true
 lmerge=true
@@ -28,8 +31,8 @@ iyear=2017
 imonth=07
 tmpdir=tmpdir
 wrkdir=""
-author="Stefan POLL"
-email="s.poll@fz-juelich.de"
+author=$(git config user.name 2>/dev/null || echo "${USER}")
+email=$(git config user.email 2>/dev/null || echo "")
 
 # Function to parse input
 parse_arguments() {
@@ -81,13 +84,14 @@ do
   if [ -z ${wrkdir} ];then
     wrkdir=${iyear}-${imonth}
   fi
+  mkdir -pv $wrkdir
   cd $wrkdir
   mkdir -pv $tmpdir
 
   if $lrmp; then
     if $lunzip; then
       # Unzip ERA5-downloaded data from zip file
-      unzip ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
+      unzip -o ${pathdata}/download_era5_${year}_${month}.zip -d ${tmpdir}
     else
       # Copy already unzipped data
       cp ${pathdata}/data_stream-oper_stepType-instant.nc ${pathdata}/data_stream-oper_stepType-avg.nc ${tmpdir}
@@ -103,6 +107,13 @@ do
         # Renaming variable 'valid_time' to 'time' in $file
         ncrename -v valid_time,time "$file"
       done
+    fi
+
+    if ! $lmeteo; then
+      # Compute specific humidity (q2m) from dewpoint temperature and surface pressure
+      python ${script_dir}/dewpoint_to_specific_humidity.py ${tmpdir}/data_stream-oper_stepType-instant.nc
+      # Extrapolate temperature (t10m) and specific humidity (q10m) from 2m to 10m
+      python ${script_dir}/2m_to_10m_conversion.py ${tmpdir}/data_stream-oper_stepType-instant.nc
     fi
 
     if $lwgtdis; then
@@ -162,8 +173,8 @@ do
 #    ncap2 -O -s 'where(FSDS<0.) FSDS=0' ${year}_${month}.nc
     ncatted -O -a units,ZBOT,m,c,"m" ${year}-${month}.nc
 
-    ncks -O -h --glb author="${author}" ${year}-${month}.nc
-    ncks -O -h --glb contact="${email}" ${year}-${month}.nc
+    ncks -O -h --glb author="${author}" ${year}-${month}.nc ${year}-${month}.nc
+    ncks -O -h --glb contact="${email}" ${year}-${month}.nc ${year}-${month}.nc
 
     rm ${tmpdir}/${year}_${month}_temp*nc ${tmpdir}/${year}_${month}_const.nc
   fi
@@ -184,8 +195,8 @@ do
     ncrename -d rlon,lon ${year}-${month}.nc
     ncrename -d rlat,lat ${year}-${month}.nc
 
-    ncks -O -h --glb author="${author}" ${year}-${month}.nc
-    ncks -O -h --glb contact="${email}" ${year}-${month}.nc
+    ncks -O -h --glb author="${author}" ${year}-${month}.nc ${year}-${month}.nc
+    ncks -O -h --glb contact="${email}" ${year}-${month}.nc ${year}-${month}.nc
 
     #
     rm ${year}_${month}_tmp.nc ${tmpdir}/${year}_${month}_temp11.nc

@@ -162,7 +162,7 @@ def generate_datarequest(year, monthstr, days,
         # Detect the actual file type
         extension = detect_file_type(target)
 
-        # Rename to final target with correct extension
+        # Rename to clean predictable filename with correct extension
         final_target = f'download_era5_{year}_{monthstr}{extension}'
         os.rename(target, final_target)
         target = final_target
@@ -227,6 +227,9 @@ if __name__ == "__main__":
     if not os.path.exists(dirout):
         os.makedirs(dirout)
 
+    # Resolve request path before changing directory
+    request_path = os.path.abspath(args.request) if args.request else None
+
     # change to output directory
     os.chdir(dirout)
 
@@ -236,18 +239,19 @@ if __name__ == "__main__":
     if args.request:
         if not os.path.isfile(args.request):
             raise FileNotFoundError(f"Custom request file not found: {args.request}")
+
         import importlib.util
-        spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
+        spec = importlib.util.spec_from_file_location("custom_request_module", request_path)
         custom_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(custom_module)
         if hasattr(custom_module, 'request'):
             custom_request = custom_module.request
-            print(f"Loaded custom request from: {args.request}")
+            print(f"Loaded custom request from: {request_path}")
         else:
-            print(f"Warning: No 'request' variable found in {args.request}, using default")
+            print(f"Warning: No 'request' variable found in {request_path}, using default")
         if hasattr(custom_module, 'dataset'):
             custom_dataset = custom_module.dataset
-            print(f"Loaded custom dataset from: {args.request}")
+            print(f"Loaded custom dataset from: {request_path}")
 
     # Handle year: extract from custom request if not provided
     if year is None:
