@@ -30,8 +30,6 @@ if [[ "$MODE" == "ERA5" ]]; then
         --request "${SCRIPT_DIR}/mkforcing/custom_request_ERA5.py" \
         # --domainfile "${SCRIPT_DIR}/domain.nc"
     unzip "data/download_era5_${YEAR}_${MONTH}.zip" -d data/
-    python mkforcing/dewpoint_to_specific_humidity.py data/data_stream-oper_stepType-instant.nc
-    python mkforcing/2m_to_10m_conversion.py data/data_stream-oper_stepType-instant.nc
     mkforcing/prepare_ERA5_input.sh \
         lrenametime=true lmeteo=false \
         lunzip=false wgtcaf=../wgtdis_era5caf_to_domain.nc \
