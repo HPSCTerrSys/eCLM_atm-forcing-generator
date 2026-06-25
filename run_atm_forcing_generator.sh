@@ -22,17 +22,16 @@ pip install "${SCRIPT_DIR}"
 
 mkdir -p "${SCRIPT_DIR}/${YEAR}-${MONTH}"
 if [[ "$MODE" == "ERA5" ]]; then
-  echo "$MODE not available"
     mkdir -p data
-    python run mkforcing/download_ERA5_input.py \
+    python mkforcing/download_ERA5_input.py \
         --year $YEAR \
         --month $MONTH \
         --dirout data \
         --request "${SCRIPT_DIR}/mkforcing/custom_request_ERA5.py" \
         # --domainfile "${SCRIPT_DIR}/domain.nc"
     unzip "data/download_era5_${YEAR}_${MONTH}.zip" -d data/
-    python run mkforcing/dewpoint_to_specific_humidity.py data/data_stream-oper_stepType-instant.nc
-    python run mkforcing/2m_to_10m_conversion.py data/data_stream-oper_stepType-instant.nc
+    python mkforcing/dewpoint_to_specific_humidity.py data/data_stream-oper_stepType-instant.nc
+    python mkforcing/2m_to_10m_conversion.py data/data_stream-oper_stepType-instant.nc
     mkforcing/prepare_ERA5_input.sh \
         lrenametime=true lmeteo=false \
         lunzip=false wgtcaf=../wgtdis_era5caf_to_domain.nc \
