@@ -210,8 +210,8 @@ def perturb_nc_file(rng,
         copy_attr_dim(src, dst)
 
         dim_time = src.dimensions["time"].size
-        dim_lat = src.dimensions["lat"].size
-        dim_lon = src.dimensions["lon"].size
+        dim_lat = src.dimensions["nj"].size
+        dim_lon = src.dimensions["ni"].size
 
         # Prepare perturbations:
         # ----------------------
@@ -249,8 +249,8 @@ def perturb_nc_file(rng,
                                           datatype=np.float64,
                                           dimensions=(
                                               "time",
-                                              "lat",
-                                              "lon",
+                                              "nj",
+                                              "ni",
                                           ),
                                           fill_value=-9.e+33)
             prectmms.setncatts({"units": u"mm/s", "missing_value": -9.e+33})
@@ -264,8 +264,8 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=-9.e+33)
             fsds.setncatts({"missing_value": -9.e+33})
@@ -279,8 +279,8 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=-9.e+33)
             flds.setncatts({"missing_value": -9.e+33})
@@ -294,8 +294,8 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=9.96921e+36)
             tbot.setncatts({
