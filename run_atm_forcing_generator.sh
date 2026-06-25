@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
-    echo "Usage: $0 MODE YEAR MONTH"
+if [[ -z "$1" || -z "$2" || -z "$3" || -z "$4" ]]; then
+    echo "Usage: $0 MODE YEAR MONTH DOMAINFILE"
     exit 1
 fi
 
 MODE=$1
 YEAR=$2
 MONTH=$3
-DOMAINFILE="domain.lnd.DE-RuS_DE-RuS.250926.nc"
+DOMAINFILE=$4   # "domain.lnd.DE-RuS_DE-RuS.250926.nc"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 source "${SCRIPT_DIR}/jsc.2024_Intel.sh"
@@ -36,7 +36,7 @@ if [[ "$MODE" == "ERA5" ]]; then
         griddesfile=../domain_griddef.txt iyear=$YEAR \
         imonth=$MONTH \
         pathdata=../data \
-        lwgtdis=true lgriddes=true domainfile="${SCRIPT_DIR}/${DOMAINFILE}"
+        lwgtdis=true lgriddes=true domainfile="${DOMAINFILE}"
 
 else
     python "${SCRIPT_DIR}/mkforcing/download_ERA5_input.py" \
@@ -73,7 +73,7 @@ else
 
     "${SCRIPT_DIR}/mkforcing/prepare_SEAS5_input.sh" \
         lwgtdis=true lgriddes=true \
-        domainfile="${SCRIPT_DIR}/${DOMAINFILE}" \
+        domainfile="${DOMAINFILE}" \
         griddesfile="${SCRIPT_DIR}/domain_griddef.txt" \
         wgtcaf="${SCRIPT_DIR}/wgtdis_era5caf_to_domain.nc" \
         iyear=${YEAR} imonth=${MONTH} \
