@@ -29,10 +29,9 @@ if [[ "$MODE" == "ERA5" ]]; then
         --dirout data \
         --request "${SCRIPT_DIR}/mkforcing/custom_request_ERA5.py" \
         # --domainfile "${SCRIPT_DIR}/domain.nc"
-    unzip "data/download_era5_${YEAR}_${MONTH}.zip" -d data/
     mkforcing/prepare_ERA5_input.sh \
         lrenametime=true lmeteo=false \
-        lunzip=false wgtcaf=../wgtdis_era5caf_to_domain.nc \
+        lunzip=true wgtcaf=../wgtdis_era5caf_to_domain.nc \
         griddesfile=../domain_griddef.txt iyear=$YEAR \
         imonth=$MONTH \
         pathdata=../data \
