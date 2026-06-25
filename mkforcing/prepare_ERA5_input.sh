@@ -51,6 +51,7 @@ parse_arguments() {
             lgriddes) lgriddes="$value" ;;
             ompthd) ompthd="$value" ;;
             pathdata) pathdata="$value" ;;
+            domainfile) domainfile="$value" ;;
             wgtcaf) wgtcaf="$value" ;;
             wgtmeteo) wgtmeteo="$value" ;;
             griddesfile) griddesfile="$value" ;;
