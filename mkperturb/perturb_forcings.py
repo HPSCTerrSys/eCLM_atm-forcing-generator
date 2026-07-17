@@ -205,7 +205,12 @@ def perturb_nc_file(rng,
     # Create subdirectories for forcing perturbation
     outname.parent.mkdir(parents=True, exist_ok=True)
 
-    with nc.Dataset(fname, "r") as src, nc.Dataset(outname, "w") as dst:
+    try:
+        src = nc.Dataset(fname, "r")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Forcing file not found: {fname}") from None
+
+    with src, nc.Dataset(outname, "w") as dst:
 
         copy_attr_dim(src, dst)
 
