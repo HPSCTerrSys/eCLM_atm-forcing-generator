@@ -79,7 +79,7 @@ do
     cp ${pathdata}/download_era5_${year}_${month}.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
 
     # Extract the first ensemble member for the template
-    # The original file with all 51 ensemble members remains in pathdata for later processing
+    # The original file with all ensemble members remains in pathdata for later processing
     ncks --overwrite -d number,0 -O ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
     # Remove number and forecast_reference_time dimensions
     ncwa --overwrite -a forecast_reference_time ${tmpdir}/download_era5_${year}_${month}_4rmp.nc ${tmpdir}/download_era5_${year}_${month}_4rmp.nc
@@ -106,7 +106,7 @@ do
 
   if $lmerge; then
 
-    # Loop over all 51 ensemble members (indices 0-50)
+    # Loop over all nens ensemble members (indices 0-50)
     for ens in $(seq 0 $((nens - 1))); do
       # Format ensemble number as 5-digit with leading zeros (1-based: ens+1)
       ens_num=$(printf "%05d" $((ens + 1)))
