@@ -210,8 +210,8 @@ def perturb_nc_file(rng,
         copy_attr_dim(src, dst)
 
         dim_time = src.dimensions["time"].size
-        dim_lat = src.dimensions["lat"].size
-        dim_lon = src.dimensions["lon"].size
+        dim_lat = src.dimensions["nj"].size
+        dim_lon = src.dimensions["ni"].size
 
         # Prepare perturbations:
         # ----------------------
@@ -249,8 +249,8 @@ def perturb_nc_file(rng,
                                           datatype=np.float64,
                                           dimensions=(
                                               "time",
-                                              "lat",
-                                              "lon",
+                                              "nj",
+                                              "ni",
                                           ),
                                           fill_value=-9.e+33)
             prectmms.setncatts({"units": u"mm/s", "missing_value": -9.e+33})
@@ -264,14 +264,30 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=-9.e+33)
             fsds.setncatts({"missing_value": -9.e+33})
-            dst.variables["FSDS"][:] = (
-                src.variables["FSDS"][:] *
-                perturbations[:, 1].reshape(src.variables["FSDS"][:, :, :].shape))
+            fsds_perturbed = (src.variables["FSDS"][:] *
+                              perturbations[:, 1].reshape(src.variables["FSDS"][:, :, :].shape))
+            # Clamp small negative values that arise from
+            # floating-point noise in the source data.
+            #
+            # Values more negative than the threshold indicate a
+            # genuine problem in the original forcing file and must
+            # not be silently discarded.
+            _FSDS_NEG_THRESHOLD = -0.01  # W/m²; below this, noise
+                                         # clamping is considered
+                                         # unsafe
+            large_neg = fsds_perturbed[fsds_perturbed < _FSDS_NEG_THRESHOLD]
+            if large_neg.size > 0:
+                raise ValueError(
+                    f"FSDS in {fname} has {large_neg.size} value(s) below "
+                    f"{_FSDS_NEG_THRESHOLD} W/m² after perturbation "
+                    f"(min={large_neg.min():.4e}). Check the original forcing file."
+                )
+            dst.variables["FSDS"][:] = np.maximum(0.0, fsds_perturbed)
 
         # Longwave radiation (additive)
         if "FLDS" in variables:
@@ -279,8 +295,8 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=-9.e+33)
             flds.setncatts({"missing_value": -9.e+33})
@@ -294,8 +310,8 @@ def perturb_nc_file(rng,
                                       datatype=np.float64,
                                       dimensions=(
                                           "time",
-                                          "lat",
-                                          "lon",
+                                          "nj",
+                                          "ni",
                                       ),
                                       fill_value=9.96921e+36)
             tbot.setncatts({
