@@ -31,8 +31,10 @@ iyear=2017
 imonth=07
 tmpdir=tmpdir
 wrkdir=""
-author=$(git config user.name 2>/dev/null || echo "${USER}")
-email=$(git config user.email 2>/dev/null || echo "")
+# Git identity is not normally configured in the container. Keep the global
+# attributes non-empty because NCO rejects arguments such as `author=`.
+author=$(git config user.name 2>/dev/null || echo "${USER:-eCLM-atm-forcing-generator}")
+email=$(git config user.email 2>/dev/null || echo "${EMAIL:-noreply@localhost}")
 
 # Function to parse input
 parse_arguments() {
@@ -206,4 +208,3 @@ do
 
 done
 done
-

@@ -15,12 +15,29 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 source "${SCRIPT_DIR}/jsc.2024_Intel.sh"
 
-VENV_DIR="${SCRIPT_DIR}/pyvenv_eclm_atm_forcing_generator"
+# cdsapi reads credentials from ~/.cdsapirc. In the container the API key is
+# supplied as a Kubernetes secret environment variable;
+CDSAPI_CONFIG="${CDSAPI_CONFIG:-${HOME:-/root}/.cdsapirc}"
+if [[ -n "${CDSAPI_KEY:-}" ]]; then
+    mkdir -p "$(dirname "${CDSAPI_CONFIG}")"
+    (
+        umask 077
+        printf 'url: %s\nkey: %s\n' \
+            "${CDSAPI_URL:-https://cds.climate.copernicus.eu/api}" \
+            "${CDSAPI_KEY}" > "${CDSAPI_CONFIG}"
+    )
+    chmod 600 "${CDSAPI_CONFIG}"
+    echo "Configured CDS API credentials at ${CDSAPI_CONFIG}"
+fi
+
+VENV_DIR="${ECLM_ATM_FORCING_VENV:-${SCRIPT_DIR}/pyvenv_eclm_atm_forcing_generator}"
 if [[ ! -d "$VENV_DIR" ]]; then
     python -m venv "$VENV_DIR"
+    source "${VENV_DIR}/bin/activate"
+    pip install "${SCRIPT_DIR}"
+else
+    source "${VENV_DIR}/bin/activate"
 fi
-source "${VENV_DIR}/bin/activate"
-pip install "${SCRIPT_DIR}"
 
 mkdir -p "${SCRIPT_DIR}/${YEAR}-${MONTH}"
 if [[ "$MODE" == "ERA5" ]]; then
