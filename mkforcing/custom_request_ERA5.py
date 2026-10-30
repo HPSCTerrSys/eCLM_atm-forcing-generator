@@ -7,14 +7,14 @@ dataset = "reanalysis-era5-single-levels"
 request = {
     "product_type": ["reanalysis"],
     "variable": [
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "2m_dewpoint_temperature",
+        "2m_temperature",
         "surface_pressure",
         "mean_surface_downward_long_wave_radiation_flux",
         "mean_surface_downward_short_wave_radiation_flux",
-        "mean_total_precipitation_rate",
-        "10m_u_component_of_wind",
-        "10m_v_component_of_wind",
-        "2m_temperature",
-        "2m_dewpoint_temperature",
+        "mean_total_precipitation_rate"
     ],
     "time": [
         "00:00", "01:00", "02:00",
@@ -27,8 +27,8 @@ request = {
         "21:00", "22:00", "23:00"
     ],
     "data_format": "netcdf",
-    "download_format": "unarchived",
-    "area": [50.870906, 6.4421445, 50.870906, 6.4421445]      # Selhausen
+    "download_format": "zip",
+    "area": [50.865906 + 0.125, 6.4471445 - 0.125, 50.865906 - 0.125, 6.4471445 + 0.125]  # Selhausen ± 0.125° → single ERA5 grid point [N, W, S, E]
     # "area": [74, -42, 20, 69] # Europe
 }
 
