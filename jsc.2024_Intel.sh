@@ -2,6 +2,9 @@
 
 # Deprecated! Lead to SSL errors at end of Oct 26
 
+echo "WARNING: jsc.2024_Intel.sh is deprecated and may lead to errors"
+echo "         Consider changing to a newer environment."
+
 # Load modules
 module --force purge
 module use $OTHERSTAGES
