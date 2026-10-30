@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Deprecated! Lead to SSL errors at end of Oct 26
+
 # Load modules
 module --force purge
 module use $OTHERSTAGES
