@@ -13,7 +13,7 @@ DOMAINFILE=$4   # "domain.lnd.DE-RuS_DE-RuS.250926.nc"
 NENS_ARG=${5:-}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-source "${SCRIPT_DIR}/jsc.2024_Intel.sh"
+source "${SCRIPT_DIR}/jsc.2025_Intel.sh"
 
 # cdsapi reads credentials from ~/.cdsapirc. In the container the API key is
 # supplied as a Kubernetes secret environment variable;
