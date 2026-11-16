@@ -1,35 +1,66 @@
 #!/usr/bin/env python3
 """
-Check consistency between eCLM forcing files and namelist configuration.
+Check consistency and validity of eCLM atmospheric forcing files.
 
-This script validates that an eCLM directory has consistent atmospheric forcing
-data by checking:
-    - datm_in namelist file exists and is valid
-    - Stream files referenced in datm_in exist
-    - Forcing files referenced in stream files exist
-    - Forcing files contain required variables
+Two input modes:
+  Namelist mode:  check_forcing.py <datm_in>
+                  Full validation chain: namelist -> stream XML -> NetCDF files.
+  Directory mode: check_forcing.py --dir <forcing_dir>
+                  Directly scan NetCDF files; checks variable presence and
+                  non-negative values (no namelist/stream validation).
+
+Ensemble mode (--ensemble-size N):
+  Namelist mode:  processes datm_in_0001 .. datm_in_NNNN as siblings of datm_in
+  Directory mode: processes real_00001 .. real_NNNNN under --dir
 
 Requirements:
-    - f90nml library (pip install f90nml)
-    - lxml library (pip install lxml)
+    - f90nml library (pip install f90nml)   [namelist mode only]
+    - lxml library (pip install lxml)       [namelist mode only]
     - netCDF4 library (pip install netCDF4)
+    - numpy library (pip install numpy)
 
 Usage:
-    python check_forcing.py <path_to_datm_in>
-    python check_forcing.py /path/to/eclm/run/datm_in
+    python check_forcing.py datm_in
+    python check_forcing.py datm_in --ensemble-size 50
+    python check_forcing.py --dir /path/to/forcings
+    python check_forcing.py --dir /path/to/run --ensemble-size 50 --members 1 2 3
     python check_forcing.py --help
 """
 
 import argparse
-
-# import os
 import sys
 from pathlib import Path
-import f90nml
-from lxml import etree
 import numpy as np
 from netCDF4 import Dataset
 
+
+# ---------------------------------------------------------------------------
+# Constants for directory mode
+# ---------------------------------------------------------------------------
+
+DEFAULT_DIR_VARIABLES = ["FSDS", "FLDS", "PRECTmms", "TBOT", "WIND", "PSRF", "QBOT"]
+# NetCDF variable name -> eCLM internal name (triggers non-negative check in check_forcing_file)
+_NONNEG_NC_TO_ECLM = {"FSDS": "swdn", "FLDS": "lwdn", "PRECTmms": "precn"}
+
+
+def _build_dir_variable_mappings(variables):
+    """Build variable_mappings dict for directory mode.
+
+    Non-negative variables get their eCLM alias as key so check_forcing_file()
+    triggers the value check. All others use an identity mapping (presence only).
+    """
+    mappings = {}
+    for v in variables:
+        if v in _NONNEG_NC_TO_ECLM:
+            mappings[_NONNEG_NC_TO_ECLM[v]] = v  # e.g. "swdn" -> "FSDS"
+        else:
+            mappings[v] = v
+    return mappings
+
+
+# ---------------------------------------------------------------------------
+# Per-file check and fix
+# ---------------------------------------------------------------------------
 
 def check_forcing_file(forcing_file_path, variable_mappings):
     """Check a NetCDF forcing file for required variables and validate values.
@@ -189,6 +220,10 @@ def fix_negative_values_in_file(forcing_file_path, variable_mappings):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Stream-based check
+# ---------------------------------------------------------------------------
+
 def check_stream_forcing_files(root, base_dir, fix_negative=False):
     """Check all forcing files referenced in a stream file.
 
@@ -288,6 +323,178 @@ def check_stream_forcing_files(root, base_dir, fix_negative=False):
 
     return results
 
+
+# ---------------------------------------------------------------------------
+# Directory-mode check
+# ---------------------------------------------------------------------------
+
+def check_member_directory(dir_path, variables=None, fix_negative=False, verbose=False):
+    """Check all NetCDF files in dir_path directly (no namelist/stream parsing).
+
+    Uses the same result structure as check_stream_forcing_files so that
+    print_forcing_check_results can be reused unchanged.
+
+    Args:
+        dir_path (Path): Directory containing *.nc forcing files
+        variables (list[str]): Variable names to check. Defaults to DEFAULT_DIR_VARIABLES.
+        fix_negative (bool): Fix negative values by setting them to zero
+        verbose (bool): Print verbose output
+
+    Returns:
+        dict: Same structure as check_stream_forcing_files output
+    """
+    if variables is None:
+        variables = DEFAULT_DIR_VARIABLES
+
+    variable_mappings = _build_dir_variable_mappings(variables)
+
+    results = {
+        "files_checked": 0,
+        "files_valid": 0,
+        "files_with_errors": 0,
+        "files_fixed": 0,
+        "file_results": {},
+        "total_errors": 0,
+        "total_warnings": 0,
+    }
+
+    nc_files = sorted(dir_path.glob("*.nc"))
+    if not nc_files:
+        print(f"  (no .nc files found in {dir_path})")
+        return results
+
+    if verbose:
+        print(f"\nChecking {len(nc_files)} NetCDF file(s) in {dir_path}")
+        print(f"Variables: {', '.join(variables)}")
+
+    for nc_file in nc_files:
+        results["files_checked"] += 1
+
+        file_result = check_forcing_file(nc_file, variable_mappings)
+
+        has_negative_errors = any(
+            checks["has_negative"]
+            for checks in file_result["value_checks"].values()
+        )
+
+        if fix_negative and has_negative_errors:
+            fix_result = fix_negative_values_in_file(nc_file, variable_mappings)
+            file_result["fix_result"] = fix_result
+
+            if fix_result["fixed"]:
+                results["files_fixed"] += 1
+                file_result = check_forcing_file(nc_file, variable_mappings)
+                file_result["was_fixed"] = True
+                file_result["fix_result"] = fix_result
+
+        results["file_results"][nc_file.name] = file_result
+
+        if file_result["errors"]:
+            results["files_with_errors"] += 1
+            results["total_errors"] += len(file_result["errors"])
+        else:
+            results["files_valid"] += 1
+
+        results["total_warnings"] += len(file_result["warnings"])
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Namelist-mode check (single member)
+# ---------------------------------------------------------------------------
+
+def check_member_namelist(datm_in_path, fix_negative=False, verbose=False):
+    """Run the full namelist-mode check for a single datm_in file.
+
+    Prints per-stream results directly. Returns a summary dict for use by
+    main() (single mode) and ensemble aggregation.
+
+    Args:
+        datm_in_path (Path): Path to the datm_in namelist file
+        fix_negative (bool): Fix negative values by setting them to zero
+        verbose (bool): Print verbose output
+
+    Returns:
+        dict with keys:
+            - 'ok': bool
+            - 'total_errors': int  (forcing file errors)
+            - 'stream_errors': int (stream file parse/not-found errors)
+            - 'fsds_min': float | None
+    """
+    import f90nml
+    from lxml import etree
+
+    summary = {"ok": True, "total_errors": 0, "stream_errors": 0, "fsds_min": None}
+
+    # Parse datm_in
+    try:
+        if verbose:
+            print(f"Parsing datm_in: {datm_in_path}")
+        nml = f90nml.read(datm_in_path)
+        base_dir = datm_in_path.parent
+        print_datm_info(nml, base_dir, verbose=verbose)
+    except Exception as e:
+        print(f"\nError parsing datm_in: {e}", file=sys.stderr)
+        summary["ok"] = False
+        summary["stream_errors"] += 1
+        return summary
+
+    # Extract stream files from namelist
+    stream_files = []
+    if "shr_strdata_nml" in nml and "streams" in nml["shr_strdata_nml"]:
+        streams = nml["shr_strdata_nml"]["streams"]
+        if isinstance(streams, str):
+            streams = [streams]
+        stream_files = [s.strip().split()[0] for s in streams if s.strip()]
+
+    all_stream_results = []
+
+    for stream_file in stream_files:
+        stream_path = base_dir / stream_file
+
+        try:
+            tree = etree.parse(str(stream_path))
+            root = tree.getroot()
+
+            print_stream_info(stream_file, root, verbose=verbose)
+
+            if verbose:
+                print("\nChecking forcing files...")
+            check_results = check_stream_forcing_files(
+                root, base_dir, fix_negative=fix_negative
+            )
+            print_forcing_check_results(check_results, verbose=verbose)
+
+            summary["total_errors"] += check_results["total_errors"]
+            all_stream_results.append(check_results)
+
+        except FileNotFoundError:
+            print(f"✗ Stream file not found: {stream_file}", file=sys.stderr)
+            summary["stream_errors"] += 1
+        except Exception as e:
+            print(f"✗ Error parsing {stream_file}: {e}", file=sys.stderr)
+            summary["stream_errors"] += 1
+
+    # Extract FSDS min across all stream results for ensemble summary
+    fsds_mins = [
+        file_result["value_checks"]["FSDS"]["min"]
+        for sr in all_stream_results
+        for file_result in sr["file_results"].values()
+        if "FSDS" in file_result.get("value_checks", {})
+    ]
+    if fsds_mins:
+        summary["fsds_min"] = min(fsds_mins)
+
+    if summary["total_errors"] > 0 or summary["stream_errors"] > 0:
+        summary["ok"] = False
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Print helpers
+# ---------------------------------------------------------------------------
 
 def print_datm_info(nml, base_dir, verbose=False):
     """Print parsed datm_in information.
@@ -413,7 +620,8 @@ def print_forcing_check_results(check_results, verbose=False):
     """Print forcing file check results.
 
     Args:
-        check_results (dict): Output from check_stream_forcing_files()
+        check_results (dict): Output from check_stream_forcing_files() or
+                              check_member_directory()
         verbose (bool): Print detailed results for each file
     """
     # In non-verbose mode, only show errors and fixes
@@ -524,6 +732,39 @@ def print_forcing_check_results(check_results, verbose=False):
                     print(f"    ✗ {error}")
 
 
+def print_ensemble_summary(all_results):
+    """Print a cross-member summary table.
+
+    Args:
+        all_results (list[dict]): Each dict has keys: member_id, ok,
+                                  total_errors, stream_errors, fsds_min
+    """
+    print("\n" + "=" * 70)
+    print("Ensemble Summary")
+    print("=" * 70)
+    print(f"  {'Member':<20}  {'Status':<6}  {'Errors':>6}  {'FSDS min':>10}")
+    print(f"  {'-'*20}  {'-'*6}  {'-'*6}  {'-'*10}")
+
+    n_ok = 0
+    n_fail = 0
+    for r in all_results:
+        status = "OK" if r["ok"] else "FAIL"
+        errors = r["total_errors"] + r.get("stream_errors", 0)
+        fsds_str = f"{r['fsds_min']:.4f}" if r["fsds_min"] is not None else "N/A"
+        print(f"  {r['member_id']:<20}  {status:<6}  {errors:>6}  {fsds_str:>10}")
+        if r["ok"]:
+            n_ok += 1
+        else:
+            n_fail += 1
+
+    print()
+    print(f"  Total: {len(all_results)} member(s)  |  {n_ok} OK  |  {n_fail} FAIL")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
     """Main entry point for the script.
 
@@ -531,100 +772,183 @@ def main():
         int: Exit code (0 for success, 1 for error)
     """
     parser = argparse.ArgumentParser(
-        description="Parse eCLM datm_in and stream files",
+        description="Check eCLM atmospheric forcing files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
 
-    parser.add_argument("datm_in", help="Path to datm_in namelist file")
-
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Print verbose output"
+        "datm_in", nargs="?", default=None,
+        help="Path to datm_in namelist file (namelist mode)",
     )
-
     parser.add_argument(
-        "--fix-negative",
-        action="store_true",
+        "--dir", metavar="FORCING_DIR",
+        help="Forcing directory to scan directly (directory mode; "
+             "mutually exclusive with datm_in)",
+    )
+    parser.add_argument(
+        "--ensemble-size", type=int, default=None, metavar="N",
+        help="Number of ensemble members. Namelist mode: looks for datm_in_NNNN "
+             "siblings of datm_in. Directory mode: looks for real_NNNNN subdirs "
+             "under --dir.",
+    )
+    parser.add_argument(
+        "--members", nargs="+", type=int, default=None, metavar="I",
+        help="Member indices to check (1-based). Default: all 1..ensemble-size.",
+    )
+    parser.add_argument(
+        "--variables", nargs="+", default=None, metavar="VAR",
+        help=f"Variables to check in directory mode "
+             f"(default: {' '.join(DEFAULT_DIR_VARIABLES)})",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Print verbose output",
+    )
+    parser.add_argument(
+        "--fix-negative", action="store_true",
         help="Fix negative values by setting them to zero and update file history",
     )
 
     args = parser.parse_args()
 
-    # Parse datm_in using f90nml
-    try:
-        if args.verbose:
-            print(f"Parsing datm_in: {args.datm_in}")
-        datm_in_path = Path(args.datm_in).resolve()
-        nml = f90nml.read(datm_in_path)
-        base_dir = datm_in_path.parent
+    # Validate input mode
+    if args.datm_in and args.dir:
+        parser.error("Specify either datm_in or --dir, not both.")
+    if not args.datm_in and not args.dir:
+        parser.error("Specify either datm_in (namelist mode) or --dir (directory mode).")
 
-        print_datm_info(nml, base_dir, verbose=args.verbose)
-    except Exception as e:
-        print(f"\nError parsing datm_in: {e}", file=sys.stderr)
-        return 1
+    dir_mode = args.dir is not None
+    variables = args.variables or DEFAULT_DIR_VARIABLES
 
-    # Extract stream files from namelist
-    stream_files = []
-    if "shr_strdata_nml" in nml and "streams" in nml["shr_strdata_nml"]:
-        streams = nml["shr_strdata_nml"]["streams"]
-        if isinstance(streams, str):
-            streams = [streams]
+    # Determine member list
+    if args.ensemble_size:
+        members = args.members if args.members else list(range(1, args.ensemble_size + 1))
+    else:
+        members = None
 
-        # Extract filenames (first part before space)
-        stream_files = [s.strip().split()[0] for s in streams if s.strip()]
-
-    # Parse each stream file and check forcing files
-    errors = []
-    total_forcing_errors = 0
-
-    for stream_file in stream_files:
-        stream_path = base_dir / stream_file
-
-        try:
-            # Parse stream XML file using lxml
-            tree = etree.parse(str(stream_path))
-            root = tree.getroot()
-
-            print_stream_info(stream_file, root, verbose=args.verbose)
-
-            # Check forcing files referenced in this stream
-            if args.verbose:
-                print("\nChecking forcing files...")
-            check_results = check_stream_forcing_files(
-                root, base_dir, fix_negative=args.fix_negative
+    # -----------------------------------------------------------------------
+    # Single mode
+    # -----------------------------------------------------------------------
+    if members is None:
+        if dir_mode:
+            dir_path = Path(args.dir).resolve()
+            if not dir_path.exists():
+                sys.exit(f"ERROR: directory '{dir_path}' not found.")
+            print(f"Checking directory: {dir_path}")
+            check_results = check_member_directory(
+                dir_path, variables=variables,
+                fix_negative=args.fix_negative, verbose=args.verbose,
             )
             print_forcing_check_results(check_results, verbose=args.verbose)
 
-            total_forcing_errors += check_results["total_errors"]
+            print("\n" + "=" * 70)
+            print("Summary")
+            print("=" * 70)
+            print(f"Files checked: {check_results['files_checked']}")
+            if check_results["total_errors"] > 0:
+                print(f"\n✗ Validation failed ({check_results['total_errors']} error(s))")
+                return 1
+            else:
+                print("\n✓ All checks passed successfully")
+                return 0
 
-        except FileNotFoundError:
-            errors.append(f"Stream file not found: {stream_file}")
-            print(f"✗ {errors[-1]}", file=sys.stderr)
-        except Exception as e:
-            errors.append(f"Error parsing {stream_file}: {e}")
-            print(f"✗ {errors[-1]}", file=sys.stderr)
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("Summary")
-    print("=" * 70)
-
-    if errors:
-        print(f"Stream file errors: {len(errors)}")
-
-    if total_forcing_errors > 0:
-        print(f"Forcing file errors: {total_forcing_errors}")
-
-    if errors or total_forcing_errors > 0:
-        if args.verbose:
-            print("\n✗ Validation completed with errors")
         else:
-            print("\n✗ Validation failed")
-        return 1
-    else:
-        print("\n✓ All checks passed successfully")
-        return 0
+            # Namelist mode — original behavior
+            datm_in_path = Path(args.datm_in).resolve()
+            if not datm_in_path.exists():
+                sys.exit(f"ERROR: datm_in '{datm_in_path}' not found.")
+
+            summary = check_member_namelist(
+                datm_in_path, fix_negative=args.fix_negative, verbose=args.verbose,
+            )
+
+            print("\n" + "=" * 70)
+            print("Summary")
+            print("=" * 70)
+            if summary["stream_errors"]:
+                print(f"Stream file errors: {summary['stream_errors']}")
+            if summary["total_errors"]:
+                print(f"Forcing file errors: {summary['total_errors']}")
+            if not summary["ok"]:
+                print("\n✗ Validation failed")
+                return 1
+            else:
+                print("\n✓ All checks passed successfully")
+                return 0
+
+    # -----------------------------------------------------------------------
+    # Ensemble mode
+    # -----------------------------------------------------------------------
+    all_results = []
+
+    for i in members:
+        if dir_mode:
+            base_dir = Path(args.dir).resolve()
+            member_dir = base_dir / f"real_{i:05d}"
+            print(f"\n{'='*70}")
+            print(f"Member: real_{i:05d}")
+            print("=" * 70)
+
+            if not member_dir.exists():
+                print(f"  ✗ Directory not found: {member_dir}", file=sys.stderr)
+                all_results.append({
+                    "member_id": f"real_{i:05d}",
+                    "ok": False,
+                    "total_errors": 1,
+                    "stream_errors": 0,
+                    "fsds_min": None,
+                })
+                continue
+
+            check_results = check_member_directory(
+                member_dir, variables=variables,
+                fix_negative=args.fix_negative, verbose=args.verbose,
+            )
+            print_forcing_check_results(check_results, verbose=args.verbose)
+
+            fsds_mins = [
+                fr["value_checks"]["FSDS"]["min"]
+                for fr in check_results["file_results"].values()
+                if "FSDS" in fr.get("value_checks", {})
+            ]
+            all_results.append({
+                "member_id": f"real_{i:05d}",
+                "ok": check_results["total_errors"] == 0,
+                "total_errors": check_results["total_errors"],
+                "stream_errors": 0,
+                "fsds_min": min(fsds_mins) if fsds_mins else None,
+            })
+
+        else:
+            # Namelist ensemble mode
+            datm_in_path = Path(args.datm_in).resolve()
+            member_nml = datm_in_path.parent / f"datm_in_{i:04d}"
+            print(f"\n{'='*70}")
+            print(f"Member: datm_in_{i:04d}")
+            print("=" * 70)
+
+            if not member_nml.exists():
+                print(f"  ✗ Not found: {member_nml}", file=sys.stderr)
+                all_results.append({
+                    "member_id": f"datm_in_{i:04d}",
+                    "ok": False,
+                    "total_errors": 0,
+                    "stream_errors": 1,
+                    "fsds_min": None,
+                })
+                continue
+
+            summary = check_member_namelist(
+                member_nml, fix_negative=args.fix_negative, verbose=args.verbose,
+            )
+            summary["member_id"] = f"datm_in_{i:04d}"
+            all_results.append(summary)
+
+    print_ensemble_summary(all_results)
+
+    n_failed = sum(1 for r in all_results if not r["ok"])
+    return 0 if n_failed == 0 else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
