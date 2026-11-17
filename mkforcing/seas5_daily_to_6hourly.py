@@ -692,7 +692,7 @@ def main():
         # encoding["valid_time"] = {"dtype": "int64"}
         encoding["valid_time"] = {"dtype": "int32"}
 
-        ds_out.to_netcdf(output_file, encoding=encoding)
+        ds_out.to_netcdf(output_file, encoding=encoding, engine='netcdf4')
 
     # Close datasets
     ds_const.close()
