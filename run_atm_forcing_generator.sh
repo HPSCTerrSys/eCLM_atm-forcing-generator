@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ -z "$1" || -z "$2" || -z "$3" || -z "$4" ]]; then
-    echo "Usage: $0 MODE YEAR MONTH DOMAINFILE [NENS]"
+UPDATE_ENV=0
+POSITIONAL=()
+for arg in "$@"; do
+    case "$arg" in
+        --update-env) UPDATE_ENV=1 ;;
+        *)            POSITIONAL+=("$arg") ;;
+    esac
+done
+set -- "${POSITIONAL[@]}"
+
+if [[ -z "${1:-}" || -z "${2:-}" || -z "${3:-}" || -z "${4:-}" ]]; then
+    echo "Usage: $0 MODE YEAR MONTH DOMAINFILE [NENS] [--update-env]"
     echo "  NENS: number of ensemble members (SEAS5 only); defaults to 25 before 2017, 51 from 2017 onwards"
+    echo "  --update-env: force re-creation of the Python virtual environment"
     exit 1
 fi
 
@@ -31,7 +42,7 @@ if [[ -n "${CDSAPI_KEY:-}" ]]; then
 fi
 
 VENV_DIR="${ECLM_ATM_FORCING_VENV:-${SCRIPT_DIR}/pyvenv_eclm_atm_forcing_generator}"
-if [[ ! -d "$VENV_DIR" ]]; then
+if [[ ! -d "$VENV_DIR" ]] || [[ "$UPDATE_ENV" -eq 1 ]]; then
     python -m venv "$VENV_DIR"
     source "${VENV_DIR}/bin/activate"
     pip install "${SCRIPT_DIR}"
