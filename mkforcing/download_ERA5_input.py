@@ -1,14 +1,43 @@
 #!/usr/bin/env python3
-"""Create monthly ERA5 input from the ECMWF ARCO Zarr store.
+"""
+Download ERA5 reanalysis data for eCLM atmospheric forcing generation.
 
-ERA5 single-level data is read directly from the ECMWF ARCO geochunked-chunked
-Zarr store.  The CDS API fallback is retained for the seasonal datasets used
-by the SEAS5 workflow.
+By default, ERA5 single-level reanalysis data is read from the ECMWF ARCO
+geochunked Zarr store, which is significantly faster than the CDS API
+(~13 s vs. ~6 min for one month).  For datasets that are not available in
+the ARCO store (e.g. SEAS5 seasonal forecasts), the script falls back to
+the CDS API automatically.
+
+Requirements:
+    - Python >= 3.11
+    - xarray, zarr, dask, fsspec, aiohttp  (ARCO path)
+    - cdsapi                                (CDS fallback path)
+    - netcdf4, numpy
+
+Credentials:
+    An API key is needed for ARCO access.  The key is resolved in this order:
+    1. ARCO_API_KEY environment variable
+    2. CDSAPI_KEY  environment variable
+    3. ``key:`` field in ~/.cdsapirc (or the file pointed to by CDSAPI_CONFIG)
+
+Usage:
+    # ERA5 reanalysis (uses fast ARCO path):
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
+
+    # ERA5 reanalysis with a custom request file:
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
+
+    # SEAS5 seasonal forecast (uses CDS API fallback):
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output \\
+        --dataset seasonal-original-single-levels --request seas5_request.py
+
+    python download_ERA5_input.py --help
 """
 import argparse
 import calendar
 import os
 import tempfile
+import zipfile
 
 import numpy as np
 import xarray as xr
@@ -18,6 +47,11 @@ ERA5_ZARR_URL = (
     "https://arco.datastores.ecmwf.int/cadl-arco-geo-002/arco/reanalysis_era5_single_levels/sfc/geoChunked.zarr"
 )
 
+# Mapping of CDS long variable names to (arco_short_name, output_name).
+# ``arco_short_name`` is the variable key inside the ARCO Zarr store.
+# ``output_name`` is the variable name written to the output NetCDF files;
+# names prefixed with ``avg_`` are time-averaged (flux / rate) fields that
+# require unit conversion from the ARCO hourly accumulations.
 ERA5_VARIABLES = {
     "10m_u_component_of_wind": ("u10", "u10"),
     "10m_v_component_of_wind": ("v10", "v10"),
@@ -28,6 +62,9 @@ ERA5_VARIABLES = {
     "mean_surface_downward_short_wave_radiation_flux": ("ssrd", "avg_sdswrf"),
     "mean_total_precipitation_rate": ("tp", "avg_tprate"),
 }
+
+# Legacy 4-variable subset used by the CDS API fallback path.  The ARCO path
+# requests all 8 variables from ERA5_VARIABLES by default.
 CDS_DEFAULT_VARIABLES = [
     "surface_pressure",
     "mean_surface_downward_long_wave_radiation_flux",
@@ -37,7 +74,18 @@ CDS_DEFAULT_VARIABLES = [
 
 
 def default_request(year, monthstr, days, variables=None):
-    """Return the default ERA5 request in CDS variable names."""
+    """Return the default ERA5 request dictionary in CDS variable names.
+
+    Args:
+        year (int): Year of the request.
+        monthstr (str): Month as zero-padded string (e.g. '07').
+        days (list): List of day numbers to include.
+        variables (list, optional): CDS long variable names to request.
+            Defaults to all keys in ``ERA5_VARIABLES``.
+
+    Returns:
+        dict: A CDS-style request dictionary.
+    """
     return {
         "product_type": ["reanalysis"],
         "variable": list(variables or ERA5_VARIABLES),
@@ -71,7 +119,20 @@ def generate_days(year, month):
 
 
 def get_arco_api_key():
-    """Get the ARCO bearer token from the environment or CDS config."""
+    """Resolve the ARCO / CDS API key from the environment or config file.
+
+    The key is looked up in the following order:
+    1. ``ARCO_API_KEY`` environment variable
+    2. ``CDSAPI_KEY`` environment variable
+    3. The ``key:`` field in ``~/.cdsapirc`` (or the path given by
+       ``CDSAPI_CONFIG``)
+
+    Returns:
+        str: The API key.
+
+    Raises:
+        RuntimeError: If no key could be found in any of the sources above.
+    """
     api_key = os.environ.get("ARCO_API_KEY") or os.environ.get("CDSAPI_KEY")
     if api_key:
         return api_key
@@ -198,12 +259,35 @@ def generate_datarequest(year, monthstr, days,
 
 
 def generate_arco_datarequest(year, monthstr, days, request=None):
-    """Read one month of ERA5 from ARCO and write the legacy CDS archive.
+    """Read one month of ERA5 from the ARCO Zarr store and write a ZIP archive.
 
-    The archive contains the same instant and average NetCDF members expected
-    by ``prepare_ERA5_input.sh``.  ARCO's ``ssrd``, ``strd`` and ``tp`` are
-    hourly accumulations, whereas the CDS request uses hourly mean fluxes or
-    rates, so those three fields are converted here.
+    The output ZIP contains two NetCDF files (``data_stream-oper_stepType-instant.nc``
+    and ``data_stream-oper_stepType-avg.nc``), matching the layout produced by
+    the CDS API so that downstream processing (``prepare_ERA5_input.sh``) works
+    unchanged.
+
+    ARCO stores ``ssrd``, ``strd`` and ``tp`` as hourly accumulations (J m-2 or
+    metres of water), whereas the CDS request returns hourly mean fluxes (W m-2)
+    or rates (kg m-2 s-1).  The conversion is applied here before writing.
+
+    Note:
+        The ARCO store provides the full global ERA5 grid.  This function
+        selects the **centre point** of the requested bounding box and picks
+        the nearest ERA5 grid point, so the output is a single-point dataset.
+
+    Args:
+        year (int): Year of the request.
+        monthstr (str): Month as zero-padded string (e.g. '07').
+        days (list): List of day numbers to include.
+        request (dict, optional): CDS-style request dictionary.  If *None*,
+            ``default_request()`` is used (all 8 ERA5 variables).
+
+    Returns:
+        str: Path to the output ZIP archive (in the current working directory).
+
+    Raises:
+        ValueError: If requested variables are not available in the ARCO store,
+            or if the request area is missing / malformed.
     """
     if request is None:
         request = default_request(year, monthstr, days)
@@ -307,7 +391,6 @@ def generate_arco_datarequest(year, monthstr, days, request=None):
                 "expver": selected.expver,
             }).to_netcdf(path, engine="netcdf4")
 
-        import zipfile
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(instant_path, os.path.basename(instant_path))
             archive.write(average_path, os.path.basename(average_path))
@@ -453,6 +536,8 @@ if __name__ == "__main__":
     print(f"Dataset: {custom_dataset}")
     print(f"Output directory: {os.getcwd()}")
 
+    # ERA5 reanalysis → fast ARCO Zarr path; all other datasets (e.g. SEAS5
+    # seasonal forecasts) → CDS API fallback, since they are not in ARCO.
     if custom_dataset == "reanalysis-era5-single-levels":
         target = generate_arco_datarequest(
             year, monthstr, days, request=custom_request
