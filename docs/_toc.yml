@@ -10,6 +10,8 @@ parts:
     title: Overview atmospheric forcing
   - file: users_guide/era5-forcing
     title: ERA5 atmospheric forcing
+  - file: users_guide/seas5-forcing
+    title: SEAS5 atmospheric forcing
   - file: users_guide/icon-forcing
     title: ICON output atmospheric forcing
   - file: users_guide/other-forcing

@@ -1,31 +1,102 @@
 #!/usr/bin/env python3
 """
-Download ERA5 reanalysis data from Copernicus Climate Data Store (CDS).
+Download ERA5 reanalysis data for eCLM atmospheric forcing generation.
 
-This script downloads ERA5 single-level reanalysis data for a specified month
-and year. The default data includes surface pressure, radiation fluxes, and
-precipitation at hourly resolution.
+By default, ERA5 single-level reanalysis data is read from the ECMWF ARCO
+geochunked Zarr store, which is significantly faster than the CDS API
+(~13 s vs. ~6 min for one month).  For datasets that are not available in
+the ARCO store (e.g. SEAS5 seasonal forecasts), the script falls back to
+the CDS API automatically.
 
 Requirements:
-    - cdsapi library (pip install cdsapi)
-    - CDS API credentials configured in ~/.cdsapirc
+    - Python >= 3.11
+    - xarray, zarr, dask, fsspec, aiohttp  (ARCO path)
+    - cdsapi                                (CDS fallback path)
+    - netcdf4, numpy
+
+Credentials:
+    An API key is needed for ARCO access.  The key is resolved in this order:
+    1. ARCO_API_KEY environment variable
+    2. CDSAPI_KEY  environment variable
+    3. ``key:`` field in ~/.cdsapirc (or the file pointed to by CDSAPI_CONFIG)
 
 Usage:
-    python download_ERA5_input.py --year <year> --month <month> --dirout <output_directory>
+    # ERA5 reanalysis (uses fast ARCO path):
     python download_ERA5_input.py --year 2017 --month 7 --dirout ./output
-    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
-    python download_ERA5_input.py --help
 
-Note:
-    CDS API credentials must be configured before use.
-    See: https://cds.climate.copernicus.eu/api-how-to
+    # ERA5 reanalysis with a custom request file:
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output --request custom_request.py
+
+    # SEAS5 seasonal forecast (uses CDS API fallback):
+    python download_ERA5_input.py --year 2017 --month 7 --dirout ./output \\
+        --dataset seasonal-original-single-levels --request seas5_request.py
+
+    python download_ERA5_input.py --help
 """
 import argparse
 import calendar
-import cdsapi
-# import sys
 import os
 import tempfile
+import zipfile
+
+import numpy as np
+import xarray as xr
+
+
+ERA5_ZARR_URL = (
+    "https://arco.datastores.ecmwf.int/cadl-arco-geo-002/arco/reanalysis_era5_single_levels/sfc/geoChunked.zarr"
+)
+
+# Mapping of CDS long variable names to (arco_short_name, output_name).
+# ``arco_short_name`` is the variable key inside the ARCO Zarr store.
+# ``output_name`` is the variable name written to the output NetCDF files;
+# names prefixed with ``avg_`` are time-averaged (flux / rate) fields that
+# require unit conversion from the ARCO hourly accumulations.
+ERA5_VARIABLES = {
+    "10m_u_component_of_wind": ("u10", "u10"),
+    "10m_v_component_of_wind": ("v10", "v10"),
+    "2m_dewpoint_temperature": ("d2m", "d2m"),
+    "2m_temperature": ("t2m", "t2m"),
+    "surface_pressure": ("sp", "sp"),
+    "mean_surface_downward_long_wave_radiation_flux": ("strd", "avg_sdlwrf"),
+    "mean_surface_downward_short_wave_radiation_flux": ("ssrd", "avg_sdswrf"),
+    "mean_total_precipitation_rate": ("tp", "avg_tprate"),
+}
+
+# Legacy 4-variable subset used by the CDS API fallback path.  The ARCO path
+# requests all 8 variables from ERA5_VARIABLES by default.
+CDS_DEFAULT_VARIABLES = [
+    "surface_pressure",
+    "mean_surface_downward_long_wave_radiation_flux",
+    "mean_surface_downward_short_wave_radiation_flux",
+    "mean_total_precipitation_rate",
+]
+
+
+def default_request(year, monthstr, days, variables=None):
+    """Return the default ERA5 request dictionary in CDS variable names.
+
+    Args:
+        year (int): Year of the request.
+        monthstr (str): Month as zero-padded string (e.g. '07').
+        days (list): List of day numbers to include.
+        variables (list, optional): CDS long variable names to request.
+            Defaults to all keys in ``ERA5_VARIABLES``.
+
+    Returns:
+        dict: A CDS-style request dictionary.
+    """
+    return {
+        "product_type": ["reanalysis"],
+        "variable": list(variables or ERA5_VARIABLES),
+        "year": [str(year)],
+        "month": [monthstr],
+        "day": days,
+        "time": [f"{hour:02d}:00" for hour in range(24)],
+        "data_format": "netcdf",
+        "download_format": "unarchived",
+        "area": [74, -42, 20, 69],
+    }
 
 
 def generate_days(year, month):
@@ -45,6 +116,43 @@ def generate_days(year, month):
     days = [day for day in range(1, num_days + 1)]
 
     return days
+
+
+def get_arco_api_key():
+    """Resolve the ARCO / CDS API key from the environment or config file.
+
+    The key is looked up in the following order:
+    1. ``ARCO_API_KEY`` environment variable
+    2. ``CDSAPI_KEY`` environment variable
+    3. The ``key:`` field in ``~/.cdsapirc`` (or the path given by
+       ``CDSAPI_CONFIG``)
+
+    Returns:
+        str: The API key.
+
+    Raises:
+        RuntimeError: If no key could be found in any of the sources above.
+    """
+    api_key = os.environ.get("ARCO_API_KEY") or os.environ.get("CDSAPI_KEY")
+    if api_key:
+        return api_key
+
+    config_path = os.environ.get("CDSAPI_CONFIG") or os.path.expanduser("~/.cdsapirc")
+    try:
+        with open(config_path, encoding="utf-8") as config_file:
+            for line in config_file:
+                name, separator, value = line.partition(":")
+                if separator and name.strip() == "key":
+                    api_key = value.strip().strip("'\"")
+                    if api_key:
+                        return api_key
+    except FileNotFoundError:
+        pass
+
+    raise RuntimeError(
+        "An API key is required for the ECMWF ARCO store; set ARCO_API_KEY "
+        "or CDSAPI_KEY, or configure the key in ~/.cdsapirc."
+    )
 
 
 def detect_file_type(filepath):
@@ -105,41 +213,25 @@ def generate_datarequest(year, monthstr, days,
         str: Path to downloaded file
     """
 
-    # active download client for climate data service (cds)
+    import cdsapi
+
+    # Active download client for the seasonal datasets that do not exist in
+    # the ERA5 ARCO store.
     client = cdsapi.Client()
 
     # Default request if not provided
     if request is None:
-        request = {
-            "product_type": ["reanalysis"],
-            "variable": [
-                "surface_pressure",
-                "mean_surface_downward_long_wave_radiation_flux",
-                "mean_surface_downward_short_wave_radiation_flux",
-                "mean_total_precipitation_rate"
-            ],
-            "year": [str(year)],
-            "month": [monthstr],
-            "day": days,
-            "time": [
-                "00:00", "01:00", "02:00",
-                "03:00", "04:00", "05:00",
-                "06:00", "07:00", "08:00",
-                "09:00", "10:00", "11:00",
-                "12:00", "13:00", "14:00",
-                "15:00", "16:00", "17:00",
-                "18:00", "19:00", "20:00",
-                "21:00", "22:00", "23:00"
-            ],
-            "data_format": "netcdf",
-            "download_format": "unarchived",
-            "area": [74, -42, 20, 69]  # N, W, S, E
-        }
+        request = default_request(year, monthstr, days, CDS_DEFAULT_VARIABLES)
     else:
+        request = request.copy()
         # Adapt year, month and day to input values
         request["year"] = [str(year)]
         request["month"] = [monthstr]
-        request["day"] = days
+        if dataset == "seasonal-original-single-levels":
+            # First day of month specified for SEAS5
+            request["day"] = ["01"]
+        else:
+            request["day"] = days
 
     # Temporary filename w/o extension if not provided
     auto_detect_extension = target is None
@@ -158,12 +250,152 @@ def generate_datarequest(year, monthstr, days,
         # Detect the actual file type
         extension = detect_file_type(target)
 
-        # Rename to final target with correct extension
-        final_target = f'{target}{extension}'
+        # Rename to clean predictable filename with correct extension
+        final_target = f'download_era5_{year}_{monthstr}{extension}'
         os.rename(target, final_target)
         target = final_target
 
     return target
+
+
+def generate_arco_datarequest(year, monthstr, days, request=None):
+    """Read one month of ERA5 from the ARCO Zarr store and write a ZIP archive.
+
+    The output ZIP contains two NetCDF files (``data_stream-oper_stepType-instant.nc``
+    and ``data_stream-oper_stepType-avg.nc``), matching the layout produced by
+    the CDS API so that downstream processing (``prepare_ERA5_input.sh``) works
+    unchanged.
+
+    ARCO stores ``ssrd``, ``strd`` and ``tp`` as hourly accumulations (J m-2 or
+    metres of water), whereas the CDS request returns hourly mean fluxes (W m-2)
+    or rates (kg m-2 s-1).  The conversion is applied here before writing.
+
+    Note:
+        The ARCO store provides the full global ERA5 grid.  This function
+        selects the **centre point** of the requested bounding box and picks
+        the nearest ERA5 grid point, so the output is a single-point dataset.
+
+    Args:
+        year (int): Year of the request.
+        monthstr (str): Month as zero-padded string (e.g. '07').
+        days (list): List of day numbers to include.
+        request (dict, optional): CDS-style request dictionary.  If *None*,
+            ``default_request()`` is used (all 8 ERA5 variables).
+
+    Returns:
+        str: Path to the output ZIP archive (in the current working directory).
+
+    Raises:
+        ValueError: If requested variables are not available in the ARCO store,
+            or if the request area is missing / malformed.
+    """
+    if request is None:
+        request = default_request(year, monthstr, days)
+    else:
+        request = request.copy()
+
+    api_key = get_arco_api_key()
+
+    requested_variables = request.get("variable", list(ERA5_VARIABLES))
+    unsupported = [name for name in requested_variables if name not in ERA5_VARIABLES]
+    if unsupported:
+        raise ValueError(f"Variables are not available in the ERA5 ARCO store: {unsupported}")
+
+    # The CDS area is [north, west, south, east].  ARCO contains the full
+    # grid, so preserve the old single-grid-point request by selecting its
+    # centre and the nearest ERA5 grid point.
+    area = request.get("area")
+    if area is None or len(area) != 4:
+        raise ValueError("An ERA5 request area [north, west, south, east] is required")
+    latitude = (float(area[0]) + float(area[2])) / 2
+    longitude = (float(area[1]) + float(area[3])) / 2
+
+    dataset = xr.open_zarr(
+        ERA5_ZARR_URL,
+        consolidated=True,
+        storage_options={"headers": {"Authorization": f"Bearer {api_key}"}},
+        chunks={},
+    )
+
+    days = [int(day) for day in days]
+    last_day = calendar.monthrange(year, int(monthstr))[1]
+    start = f"{year}-{monthstr}-01T00:00"
+    end = f"{year}-{monthstr}-{last_day:02d}T23:00"
+    dataset = dataset.sel(time=slice(start, end))
+    dataset = dataset.where(dataset.time.dt.day.isin(days), drop=True)
+
+    requested_times = request.get("time")
+    if requested_times:
+        requested_hours = [
+            int(str(value).split(":", 1)[0]) for value in requested_times
+        ]
+        dataset = dataset.where(dataset.time.dt.hour.isin(requested_hours), drop=True)
+
+    selected = dataset.sel(latitude=latitude, longitude=longitude, method="nearest")
+    selected_latitude = float(selected.latitude)
+    selected_longitude = float(selected.longitude)
+    selected = selected[[ERA5_VARIABLES[name][0] for name in requested_variables]]
+
+    # Materialize the small point selection before closing the remote store;
+    # this keeps all remote reads within this function and produces ordinary
+    # NumPy-backed NetCDF output.
+    selected = selected.load()
+    selected = selected.expand_dims(
+        latitude=[selected_latitude], longitude=[selected_longitude]
+    ).transpose("time", "latitude", "longitude")
+    # CDO needs CF metadata to recognize a one-point lon/lat grid. Without
+    # units it treats the ARCO selection as a generic grid and gendis fails.
+    selected["latitude"].attrs.update(
+        {"standard_name": "latitude", "axis": "Y", "units": "degrees_north"}
+    )
+    selected["longitude"].attrs.update(
+        {"standard_name": "longitude", "axis": "X", "units": "degrees_east"}
+    )
+    selected = selected.rename({"time": "valid_time"})
+    selected["number"] = xr.DataArray(np.int32(0))
+    selected["expver"] = xr.DataArray(
+        np.full(selected.sizes["valid_time"], "0001"), dims="valid_time"
+    )
+
+    instant = {}
+    average = {}
+    for source_name in requested_variables:
+        source, target = ERA5_VARIABLES[source_name]
+        variable = selected[source]
+        if target in {"avg_sdlwrf", "avg_sdswrf", "avg_tprate"}:
+            # ARCO stores hourly accumulations: radiation in J m-2 and
+            # precipitation in metres of water.  The CDS precipitation rate
+            # is kg m-2 s-1, hence the water-density conversion for tp.
+            variable = variable * (1000.0 if target == "avg_tprate" else 1.0) / 3600.0
+            variable.attrs = dict(variable.attrs)
+            variable.attrs["units"] = (
+                "kg m**-2 s**-1" if target == "avg_tprate" else "W m**-2"
+            )
+            average[target] = variable
+        else:
+            instant[target] = variable
+
+    output_base = f"download_era5_{year}_{monthstr}"
+    archive_path = f"{output_base}.zip"
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = os.path.abspath(temp_dir)
+        instant_path = os.path.join(temp_path, "data_stream-oper_stepType-instant.nc")
+        average_path = os.path.join(temp_path, "data_stream-oper_stepType-avg.nc")
+
+        for variables, path in ((instant, instant_path), (average, average_path)):
+            xr.Dataset(variables, coords={
+                "valid_time": selected.valid_time,
+                "latitude": selected.latitude,
+                "longitude": selected.longitude,
+                "number": selected.number,
+                "expver": selected.expver,
+            }).to_netcdf(path, engine="netcdf4")
+
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(instant_path, os.path.basename(instant_path))
+            archive.write(average_path, os.path.basename(average_path))
+
+    return archive_path
 
 
 if __name__ == "__main__":
@@ -223,6 +455,9 @@ if __name__ == "__main__":
     if not os.path.exists(dirout):
         os.makedirs(dirout)
 
+    # Resolve request path before changing directory
+    request_path = os.path.abspath(args.request) if args.request else None
+
     # change to output directory
     os.chdir(dirout)
 
@@ -230,18 +465,21 @@ if __name__ == "__main__":
     custom_request = None
     custom_dataset = args.dataset
     if args.request:
+        if not os.path.isfile(args.request):
+            raise FileNotFoundError(f"Custom request file not found: {args.request}")
+
         import importlib.util
-        spec = importlib.util.spec_from_file_location("custom_request_module", args.request)
+        spec = importlib.util.spec_from_file_location("custom_request_module", request_path)
         custom_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(custom_module)
         if hasattr(custom_module, 'request'):
             custom_request = custom_module.request
-            print(f"Loaded custom request from: {args.request}")
+            print(f"Loaded custom request from: {request_path}")
         else:
-            print(f"Warning: No 'request' variable found in {args.request}, using default")
+            print(f"Warning: No 'request' variable found in {request_path}, using default")
         if hasattr(custom_module, 'dataset'):
             custom_dataset = custom_module.dataset
-            print(f"Loaded custom dataset from: {args.request}")
+            print(f"Loaded custom dataset from: {request_path}")
 
     # Handle year: extract from custom request if not provided
     if year is None:
@@ -294,10 +532,19 @@ if __name__ == "__main__":
         days = generate_days(year, month)
         print(f"Using all days in month: {len(days)} days")
 
-    print(f"Downloading ERA5 data for {year}-{monthstr}")
+    print(f"Preparing ERA5 data for {year}-{monthstr}")
     print(f"Dataset: {custom_dataset}")
     print(f"Output directory: {os.getcwd()}")
 
-    # Execute download request
-    target = generate_datarequest(year, monthstr, days, dataset=custom_dataset, request=custom_request)
-    print(f"Download complete: {os.path.abspath(target)}")
+    # ERA5 reanalysis → fast ARCO Zarr path; all other datasets (e.g. SEAS5
+    # seasonal forecasts) → CDS API fallback, since they are not in ARCO.
+    if custom_dataset == "reanalysis-era5-single-levels":
+        target = generate_arco_datarequest(
+            year, monthstr, days, request=custom_request
+        )
+        print(f"ARCO read complete: {os.path.abspath(target)}")
+    else:
+        target = generate_datarequest(
+            year, monthstr, days, dataset=custom_dataset, request=custom_request
+        )
+        print(f"Download complete: {os.path.abspath(target)}")
